@@ -14,8 +14,11 @@ export interface FetchOptions {
   /** HTTP method */
   method?: HttpMethod;
 
-  /** Request body */
+  /** Request body (will be JSON stringified) */
   body?: unknown;
+
+  /** Raw body string (sent as-is, takes precedence over body) */
+  rawBody?: string;
 
   /** Additional headers for this request */
   headers?: Record<string, string>;
@@ -97,7 +100,7 @@ export class Fetcher {
    * Perform a fetch request with error handling
    */
   async fetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
-    const { method = "GET", body, headers = {}, timeout, params } = options;
+    const { method = "GET", body, rawBody, headers = {}, timeout, params } = options;
     const requestTimeout = timeout ?? this.defaultTimeout;
 
     const url = this.buildUrl(path, params);
@@ -106,6 +109,11 @@ export class Fetcher {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
 
+    // Determine body to send: rawBody takes precedence over JSON-stringified body
+    const requestBody = rawBody !== undefined
+      ? rawBody
+      : (body !== undefined ? JSON.stringify(body) : undefined);
+
     try {
       const response = await fetch(url, {
         method,
@@ -113,7 +121,7 @@ export class Fetcher {
           ...this.defaultHeaders,
           ...headers,
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: requestBody,
         signal: controller.signal,
       });
 
@@ -217,6 +225,29 @@ export class Fetcher {
     options?: Omit<FetchOptions, "method" | "body">
   ): Promise<T> {
     return this.fetch<T>(path, { ...options, method: "DELETE" });
+  }
+
+  /**
+   * Perform a POST request with NDJSON body
+   *
+   * @param path - API path
+   * @param ndjsonBody - Pre-serialized NDJSON string
+   * @param options - Additional fetch options
+   */
+  async postNDJSON<T>(
+    path: string,
+    ndjsonBody: string,
+    options?: Omit<FetchOptions, "method" | "body" | "rawBody">
+  ): Promise<T> {
+    return this.fetch<T>(path, {
+      ...options,
+      method: "POST",
+      rawBody: ndjsonBody,
+      headers: {
+        ...options?.headers,
+        "Content-Type": "application/x-ndjson",
+      },
+    });
   }
 
   /**

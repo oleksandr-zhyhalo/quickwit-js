@@ -34,6 +34,12 @@ export type {
   SourceConfig,
   HttpMethod,
   ApiResponse,
+  // Ingest types
+  CommitMode,
+  IngestOptions,
+  IngestResponse,
+  // Index management types
+  CreateIndexRequest,
 } from "./types";
 
 // Search types

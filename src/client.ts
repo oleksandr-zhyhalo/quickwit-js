@@ -1,4 +1,9 @@
-import type { QuickwitConfig, HealthResponse, IndexMetadata } from "./types";
+import type {
+  QuickwitConfig,
+  HealthResponse,
+  IndexMetadata,
+  CreateIndexRequest,
+} from "./types";
 import { Fetcher } from "./utils/fetcher";
 import { Index } from "./index-handle";
 
@@ -126,6 +131,63 @@ export class QuickwitClient {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Create a new index
+   *
+   * @param config - Index configuration including doc_mapping and settings
+   * @returns The created index metadata
+   *
+   * @example
+   * ```typescript
+   * const metadata = await client.createIndex({
+   *   version: "0.7",
+   *   index_id: "logs",
+   *   doc_mapping: {
+   *     field_mappings: [
+   *       { name: "timestamp", type: "datetime", fast: true },
+   *       { name: "level", type: "text", tokenizer: "raw" },
+   *       { name: "message", type: "text" }
+   *     ],
+   *     timestamp_field: "timestamp"
+   *   }
+   * });
+   * ```
+   */
+  async createIndex(config: CreateIndexRequest): Promise<IndexMetadata> {
+    return this.fetcher.post<IndexMetadata>("/api/v1/indexes", config);
+  }
+
+  /**
+   * Delete an index and all its data
+   *
+   * @param indexId - The index ID to delete
+   *
+   * @example
+   * ```typescript
+   * await client.deleteIndex("old-logs");
+   * ```
+   */
+  async deleteIndex(indexId: string): Promise<void> {
+    await this.fetcher.delete(`/api/v1/indexes/${indexId}`);
+    this.indexCache.delete(indexId);
+  }
+
+  /**
+   * Clear all documents from an index without deleting the index itself
+   *
+   * @param indexId - The index ID to clear
+   *
+   * @example
+   * ```typescript
+   * // Remove all documents but keep the index configuration
+   * await client.clearIndex("logs");
+   * ```
+   */
+  async clearIndex(indexId: string): Promise<void> {
+    await this.fetcher.put(`/api/v1/indexes/${indexId}/clear`);
+    this.indexCache.delete(indexId);
   }
 
   /**

@@ -275,3 +275,63 @@ export interface ApiResponse<T> {
   /** Response headers */
   headers: Headers;
 }
+
+// ============================================================================
+// Ingest Types
+// ============================================================================
+
+/**
+ * Commit mode for document ingestion
+ */
+export type CommitMode = "auto" | "wait_for" | "force";
+
+/**
+ * Options for document ingestion
+ */
+export interface IngestOptions {
+  /**
+   * Controls when ingested documents become searchable
+   * - "auto" (default): Documents queued immediately; searchable after automatic commit
+   * - "wait_for": Wait for commit based on time/document thresholds
+   * - "force": Trigger immediate commit after processing (slower but guaranteed searchable)
+   */
+  commit?: CommitMode;
+}
+
+/**
+ * Response from the ingest API
+ */
+export interface IngestResponse {
+  /** Number of documents queued for processing */
+  num_docs_for_processing: number;
+}
+
+// ============================================================================
+// Index Management Types
+// ============================================================================
+
+/**
+ * Request body for creating a new index
+ */
+export interface CreateIndexRequest {
+  /** Version of the index configuration format */
+  version: string;
+
+  /** Unique index ID */
+  index_id: string;
+
+  /** Index URI (storage location) */
+  index_uri?: string;
+
+  /** Document mapping configuration */
+  doc_mapping: DocMapping;
+
+  /** Indexing settings */
+  indexing_settings?: IndexingSettings;
+
+  /** Search settings */
+  search_settings?: SearchSettings;
+
+  /** Retention policy */
+  retention?: RetentionPolicy;
+}

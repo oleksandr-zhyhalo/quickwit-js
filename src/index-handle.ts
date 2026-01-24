@@ -4,7 +4,10 @@ import type {
   SearchResponse,
   BuiltQuery,
 } from "./search/types";
+import type { IngestOptions, IngestResponse } from "./types";
 import { QueryBuilder } from "./search/query-builder";
+import { toNDJSON } from "./utils/ndjson";
+import { ValidationError } from "./errors";
 
 /**
  * Handle for operations on a specific Quickwit index
@@ -156,6 +159,46 @@ export class Index {
 
     const response = await this.search(params);
     return response.num_hits;
+  }
+
+  /**
+   * Ingest documents into this index
+   *
+   * @param documents - Array of documents to ingest
+   * @param options - Ingest options (commit mode)
+   * @returns Ingest response with number of documents queued
+   *
+   * @example
+   * ```typescript
+   * // Ingest with auto commit (default)
+   * const result = await index.ingest([
+   *   { timestamp: Date.now(), level: "info", message: "Hello" },
+   *   { timestamp: Date.now(), level: "error", message: "Something failed" }
+   * ]);
+   *
+   * // Ingest with forced commit (documents immediately searchable)
+   * const result = await index.ingest(documents, { commit: "force" });
+   * ```
+   */
+  async ingest<T extends Record<string, unknown>>(
+    documents: T[],
+    options?: IngestOptions
+  ): Promise<IngestResponse> {
+    if (documents.length === 0) {
+      throw new ValidationError("Cannot ingest empty document array", {
+        fields: ["documents"],
+      });
+    }
+
+    const ndjsonBody = toNDJSON(documents);
+    const path = `/api/v1/${this.indexId}/ingest`;
+
+    const params: Record<string, string> = {};
+    if (options?.commit) {
+      params.commit = options.commit;
+    }
+
+    return this.fetcher.postNDJSON<IngestResponse>(path, ndjsonBody, { params });
   }
 
   /**
