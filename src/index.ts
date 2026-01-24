@@ -46,7 +46,6 @@ export type {
 export type {
   SearchRequestParams,
   SearchResponse,
-  SearchHit,
   SortOrder,
   SortSpec,
   BuiltQuery,
