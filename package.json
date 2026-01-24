@@ -1,5 +1,5 @@
 {
-  "name": "@oleksandr-zhyhalo/quickwit-js",
+  "name": "quickwit-js",
   "version": "0.1.0",
   "description": "Lightweight TypeScript client for Quickwit search engine",
   "license": "MIT",
@@ -9,7 +9,7 @@
     "url": "https://github.com/oleksandr-zhyhalo/quickwit-js.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "homepage": "https://github.com/oleksandr-zhyhalo/quickwit-js",
   "type": "module",
