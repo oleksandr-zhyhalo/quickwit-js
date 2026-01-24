@@ -107,7 +107,7 @@ export class Index {
       queryParams.count_all = params.count_all;
     }
     if (params.search_fields !== undefined && params.search_fields.length > 0) {
-      queryParams.search_fields = params.search_fields.join(",");
+      queryParams.search_field = params.search_fields.join(",");
     }
     if (params.snippet_fields !== undefined && params.snippet_fields.length > 0) {
       queryParams.snippet_fields = params.snippet_fields.join(",");
@@ -120,20 +120,20 @@ export class Index {
    * Execute a search query and return only the hits
    *
    * @param query - Query parameters, QueryBuilder, or BuiltQuery
-   * @returns Array of document sources
+   * @returns Array of documents
    */
   async searchHits<T = Record<string, unknown>>(
     query?: string | SearchRequestParams | QueryBuilder | BuiltQuery
   ): Promise<T[]> {
     const response = await this.search<T>(query);
-    return response.hits.map((hit) => hit._source);
+    return response.hits;
   }
 
   /**
    * Execute a search query and return the first hit
    *
    * @param query - Query parameters, QueryBuilder, or BuiltQuery
-   * @returns First document source or undefined if no hits
+   * @returns First document or undefined if no hits
    */
   async searchFirst<T = Record<string, unknown>>(
     query?: string | SearchRequestParams | QueryBuilder | BuiltQuery
@@ -143,19 +143,23 @@ export class Index {
     params.max_hits = 1;
 
     const response = await this.search<T>(params);
-    return response.hits[0]?._source;
+    return response.hits[0];
   }
 
   /**
    * Count documents matching a query
    *
-   * @param query - Query string or parameters
+   * @param query - Query string or parameters (defaults to "*" for all documents)
    * @returns Number of matching documents
    */
   async count(query?: string | SearchRequestParams | QueryBuilder): Promise<number> {
     const { params } = this.normalizeQuery(query);
     params.max_hits = 0;
     params.count_all = true;
+    // Default to match all if no query provided
+    if (!params.query) {
+      params.query = "*";
+    }
 
     const response = await this.search(params);
     return response.num_hits;
