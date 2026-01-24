@@ -132,6 +132,48 @@ try {
 }
 ```
 
+## Document Ingest
+
+```typescript
+const logs = client.index("logs");
+
+// Ingest documents (batch)
+const result = await logs.ingest([
+  { timestamp: Date.now(), level: "info", message: "User logged in" },
+  { timestamp: Date.now(), level: "error", message: "Connection failed" },
+]);
+console.log(`Queued ${result.num_docs_for_processing} documents`);
+
+// With commit mode
+await logs.ingest(documents, { commit: "auto" });      // Default: queued immediately
+await logs.ingest(documents, { commit: "wait_for" });  // Wait for commit threshold
+await logs.ingest(documents, { commit: "force" });     // Immediate commit (slower)
+```
+
+## Index Management
+
+```typescript
+// Create an index
+await client.createIndex({
+  version: "0.7",
+  index_id: "logs",
+  doc_mapping: {
+    field_mappings: [
+      { name: "timestamp", type: "datetime", fast: true },
+      { name: "level", type: "text", tokenizer: "raw" },
+      { name: "message", type: "text" },
+    ],
+    timestamp_field: "timestamp",
+  },
+});
+
+// Delete an index
+await client.deleteIndex("old-logs");
+
+// Clear all documents (keeps index config)
+await client.clearIndex("logs");
+```
+
 ## Client Methods
 
 ```typescript
