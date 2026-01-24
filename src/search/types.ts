@@ -41,8 +41,8 @@ export interface SearchRequestParams {
  * Search response from Quickwit
  */
 export interface SearchResponse<T = Record<string, unknown>> {
-  /** Matching documents */
-  hits: SearchHit<T>[];
+  /** Matching documents (documents directly, not wrapped in _source) */
+  hits: T[];
 
   /** Total number of matching documents (estimate or exact based on count_all) */
   num_hits: number;
@@ -55,23 +55,6 @@ export interface SearchResponse<T = Record<string, unknown>> {
 
   /** Errors encountered during search (partial results) */
   errors?: string[];
-}
-
-/**
- * Individual search hit
- */
-export interface SearchHit<T = Record<string, unknown>> {
-  /** Document source */
-  _source: T;
-
-  /** Document score (relevance) */
-  _score?: number;
-
-  /** Highlighted snippets (if snippet_fields was specified) */
-  _snippets?: Record<string, string[]>;
-
-  /** Sort values used for this hit */
-  _sort?: unknown[];
 }
 
 // ============================================================================

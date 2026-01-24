@@ -12,6 +12,7 @@ import {
   ForbiddenError,
   createErrorFromStatus,
 } from "../src";
+import { toNDJSON } from "../src/utils/ndjson";
 
 // ============================================================================
 // QueryBuilder Tests
@@ -612,5 +613,108 @@ describe("QueryBuilder + AggregationBuilder Integration", () => {
     };
     expect(byLevel.terms.field).toBe("level");
     expect(byLevel.aggs).toHaveProperty("by_service");
+  });
+});
+
+// ============================================================================
+// NDJSON Serialization Tests
+// ============================================================================
+
+describe("toNDJSON", () => {
+  test("serializes empty array to empty string", () => {
+    const result = toNDJSON([]);
+    expect(result).toBe("");
+  });
+
+  test("serializes single document with trailing newline", () => {
+    const docs = [{ id: 1, name: "test" }];
+    const result = toNDJSON(docs);
+    expect(result).toBe('{"id":1,"name":"test"}\n');
+  });
+
+  test("serializes multiple documents with newlines", () => {
+    const docs = [
+      { id: 1, name: "first" },
+      { id: 2, name: "second" },
+      { id: 3, name: "third" },
+    ];
+    const result = toNDJSON(docs);
+    // Split and filter empty strings (from trailing newline)
+    const lines = result.split("\n").filter((line) => line.length > 0);
+
+    expect(lines).toHaveLength(3);
+    expect(JSON.parse(lines[0]!)).toEqual({ id: 1, name: "first" });
+    expect(JSON.parse(lines[1]!)).toEqual({ id: 2, name: "second" });
+    expect(JSON.parse(lines[2]!)).toEqual({ id: 3, name: "third" });
+    // Verify trailing newline
+    expect(result.endsWith("\n")).toBe(true);
+  });
+
+  test("handles nested objects", () => {
+    const docs = [
+      {
+        timestamp: 1704067200,
+        level: "error",
+        metadata: { service: "api", region: "us-east-1" },
+      },
+    ];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.metadata.service).toBe("api");
+    expect(parsed.metadata.region).toBe("us-east-1");
+  });
+
+  test("handles arrays in documents", () => {
+    const docs = [{ tags: ["error", "critical", "api"] }];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.tags).toEqual(["error", "critical", "api"]);
+  });
+
+  test("handles special characters in strings", () => {
+    const docs = [{ message: 'Error: "something" failed\nwith newline' }];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.message).toBe('Error: "something" failed\nwith newline');
+  });
+
+  test("handles null and undefined values", () => {
+    const docs = [{ defined: "value", nullable: null, undef: undefined }];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.defined).toBe("value");
+    expect(parsed.nullable).toBe(null);
+    expect(parsed.undef).toBeUndefined();
+  });
+
+  test("handles numeric types correctly", () => {
+    const docs = [
+      {
+        integer: 42,
+        float: 3.14159,
+        negative: -100,
+        scientific: 1.5e10,
+      },
+    ];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.integer).toBe(42);
+    expect(parsed.float).toBe(3.14159);
+    expect(parsed.negative).toBe(-100);
+    expect(parsed.scientific).toBe(1.5e10);
+  });
+
+  test("handles boolean values", () => {
+    const docs = [{ active: true, deleted: false }];
+    const result = toNDJSON(docs);
+    const parsed = JSON.parse(result);
+
+    expect(parsed.active).toBe(true);
+    expect(parsed.deleted).toBe(false);
   });
 });
