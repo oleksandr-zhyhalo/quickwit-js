@@ -1,0 +1,6 @@
+src/
+tests/
+tsconfig*.json
+bun.lock
+CLAUDE.md
+.gitignore
