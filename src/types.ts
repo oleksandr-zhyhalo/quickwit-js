@@ -36,26 +36,26 @@ export interface HealthResponse {
 }
 
 /**
- * Index metadata returned by Quickwit
+ * Index metadata returned by Quickwit (matches VersionedIndexMetadata)
  */
 export interface IndexMetadata {
-  /** Unique index ID */
-  index_id: string;
+  /** Version of the metadata format */
+  version: string;
 
-  /** Index URI */
-  index_uri: string;
+  /** Unique index UID (format: "index_id:ulid") */
+  index_uid: string;
 
   /** Index configuration */
   index_config: IndexConfig;
 
   /** Checkpoint tracking source positions */
-  checkpoint?: Record<string, unknown>;
+  checkpoint: Record<string, unknown>;
 
   /** Creation timestamp */
   create_timestamp?: number;
 
   /** Sources attached to the index */
-  sources?: SourceConfig[];
+  sources: SourceConfig[];
 }
 
 /**
@@ -88,6 +88,9 @@ export interface IndexConfig {
  * Document mapping configuration
  */
 export interface DocMapping {
+  /** Document mapping UID */
+  doc_mapping_uid?: string;
+
   /** Field mappings */
   field_mappings: FieldMapping[];
 
@@ -98,13 +101,42 @@ export interface DocMapping {
   timestamp_field?: string;
 
   /** Mode for handling unmapped fields */
-  mode?: "lenient" | "strict";
+  mode?: "lenient" | "strict" | "dynamic";
+
+  /** Dynamic mapping options (when mode is "dynamic") */
+  dynamic_mapping?: Record<string, unknown>;
 
   /** Partition key */
   partition_key?: string;
 
   /** Maximum number of partitions */
   max_num_partitions?: number;
+
+  /** Whether to store the original source documents */
+  store_source?: boolean;
+
+  /** Whether to store document size in a fast field */
+  store_document_size?: boolean;
+
+  /** Whether to record field presence for exists queries */
+  index_field_presence?: boolean;
+
+  /** Custom tokenizer definitions */
+  tokenizers?: TokenizerEntry[];
+}
+
+/**
+ * Custom tokenizer definition
+ */
+export interface TokenizerEntry {
+  /** Tokenizer name */
+  name: string;
+
+  /** Tokenizer type */
+  type: string;
+
+  /** Additional tokenizer-specific configuration */
+  [key: string]: unknown;
 }
 
 /**
@@ -169,6 +201,12 @@ export interface IndexingSettings {
   /** Split number of docs threshold */
   split_num_docs_target?: number;
 
+  /** Docstore block size in bytes */
+  docstore_blocksize?: number;
+
+  /** Docstore compression level */
+  docstore_compression_level?: number;
+
   /** Merge policy */
   merge_policy?: MergePolicy;
 
@@ -189,19 +227,28 @@ export interface MergePolicy {
   /** Merge factor */
   merge_factor?: number;
 
-  /** Maximum merge docs */
-  max_merge_docs?: number;
+  /** Maximum merge factor */
+  max_merge_factor?: number;
+
+  /** Maturation period (e.g., "48 hours") */
+  maturation_period?: string;
+
+  /** Max finalize merge operations (limit_merge only) */
+  max_finalize_merge_operations?: number;
+
+  /** Max finalize split num docs (limit_merge only) */
+  max_finalize_split_num_docs?: number;
+
+  /** Max merge ops (limit_merge only) */
+  max_merge_ops?: number;
 }
 
 /**
  * Resource configuration for indexing
  */
 export interface ResourcesConfig {
-  /** Number of threads */
-  num_threads?: number;
-
-  /** Heap size in bytes */
-  heap_size?: number;
+  /** Heap size (e.g., "2 GB") */
+  heap_size?: string;
 }
 
 /**
@@ -227,11 +274,28 @@ export interface RetentionPolicy {
  * Source configuration
  */
 export interface SourceConfig {
+  /** Version of the source configuration format */
+  version?: string;
+
   /** Source ID */
   source_id: string;
 
   /** Source type */
-  source_type: "file" | "kafka" | "kinesis" | "pulsar" | "ingest-api" | "void";
+  source_type:
+    | "file"
+    | "kafka"
+    | "kinesis"
+    | "pulsar"
+    | "pubsub"
+    | "ingest"
+    | "ingest-api"
+    | "ingest-cli"
+    | "stdin"
+    | "vec"
+    | "void";
+
+  /** Whether the source is enabled */
+  enabled?: boolean;
 
   /** Number of pipelines */
   num_pipelines?: number;
@@ -243,7 +307,13 @@ export interface SourceConfig {
   transform?: TransformConfig;
 
   /** Input format */
-  input_format?: "json" | "plain_text";
+  input_format?:
+    | "json"
+    | "plain_text"
+    | "otlp_logs_json"
+    | "otlp_logs_protobuf"
+    | "otlp_traces_json"
+    | "otlp_traces_protobuf";
 }
 
 /**
@@ -334,4 +404,91 @@ export interface CreateIndexRequest {
 
   /** Retention policy */
   retention?: RetentionPolicy;
+}
+
+// ============================================================================
+// Index Stats Types
+// ============================================================================
+
+/**
+ * Index statistics from the describe endpoint
+ */
+export interface IndexStats {
+  /** Index ID */
+  index_id: string;
+
+  /** Index URI */
+  index_uri: string;
+
+  /** Number of published splits */
+  num_published_splits: number;
+
+  /** Total size of published splits in bytes */
+  size_published_splits: number;
+
+  /** Number of published documents */
+  num_published_docs: number;
+
+  /** Uncompressed size of published documents in bytes */
+  size_published_docs_uncompressed: number;
+
+  /** Name of the timestamp field, if any */
+  timestamp_field_name?: string;
+
+  /** Minimum timestamp across all documents */
+  min_timestamp?: number;
+
+  /** Maximum timestamp across all documents */
+  max_timestamp?: number;
+}
+
+// ============================================================================
+// Options Types
+// ============================================================================
+
+/**
+ * Options for listing indexes
+ */
+export interface ListIndexesOptions {
+  /** Glob patterns to filter index IDs (e.g., ["logs-*", "metrics-*"]) */
+  index_id_patterns?: string[];
+}
+
+/**
+ * Options for creating an index
+ */
+export interface CreateIndexOptions {
+  /** Overwrite the index if it already exists */
+  overwrite?: boolean;
+}
+
+/**
+ * Options for deleting an index
+ */
+export interface DeleteIndexOptions {
+  /** Perform a dry run without actually deleting */
+  dry_run?: boolean;
+}
+
+/**
+ * Options for updating an index
+ */
+export interface UpdateIndexOptions {
+  /** Create the index if it doesn't exist */
+  create?: boolean;
+}
+
+/**
+ * Options for updating a source
+ */
+export interface UpdateSourceOptions {
+  /** Create the source if it doesn't exist */
+  create?: boolean;
+}
+
+/**
+ * File entry returned by delete operations
+ */
+export interface FileEntry {
+  [key: string]: unknown;
 }

@@ -4,7 +4,12 @@ import type {
   SearchResponse,
   BuiltQuery,
 } from "./search/types";
-import type { IngestOptions, IngestResponse } from "./types";
+import type {
+  IngestOptions,
+  IngestResponse,
+  SourceConfig,
+  UpdateSourceOptions,
+} from "./types";
 import { QueryBuilder } from "./search/query-builder";
 import { toNDJSON } from "./utils/ndjson";
 import { ValidationError } from "./errors";
@@ -106,6 +111,9 @@ export class Index {
     if (params.count_all !== undefined) {
       queryParams.count_all = params.count_all;
     }
+    if (params.allow_failed_splits !== undefined) {
+      queryParams.allow_failed_splits = params.allow_failed_splits;
+    }
     if (params.search_fields !== undefined && params.search_fields.length > 0) {
       queryParams.search_field = params.search_fields.join(",");
     }
@@ -203,6 +211,78 @@ export class Index {
     }
 
     return this.fetcher.postNDJSON<IngestResponse>(path, ndjsonBody, { params });
+  }
+
+  /**
+   * Create a new source for this index
+   *
+   * @param config - Source configuration
+   * @returns Created source configuration
+   */
+  async createSource(config: SourceConfig): Promise<SourceConfig> {
+    return this.fetcher.post<SourceConfig>(
+      `/api/v1/indexes/${this.indexId}/sources`,
+      config
+    );
+  }
+
+  /**
+   * Update an existing source configuration
+   *
+   * @param sourceId - The source ID to update
+   * @param config - New source configuration
+   * @param options - Update options
+   * @returns Updated source configuration
+   */
+  async updateSource(
+    sourceId: string,
+    config: SourceConfig,
+    options?: UpdateSourceOptions
+  ): Promise<SourceConfig> {
+    const params: Record<string, string | boolean | undefined> = {};
+    if (options?.create !== undefined) {
+      params.create = options.create;
+    }
+    return this.fetcher.put<SourceConfig>(
+      `/api/v1/indexes/${this.indexId}/sources/${sourceId}`,
+      config,
+      { params }
+    );
+  }
+
+  /**
+   * Delete a source from this index
+   *
+   * @param sourceId - The source ID to delete
+   */
+  async deleteSource(sourceId: string): Promise<void> {
+    await this.fetcher.delete(
+      `/api/v1/indexes/${this.indexId}/sources/${sourceId}`
+    );
+  }
+
+  /**
+   * Reset the checkpoint for a source, causing it to re-process from the beginning
+   *
+   * @param sourceId - The source ID to reset
+   */
+  async resetSourceCheckpoint(sourceId: string): Promise<void> {
+    await this.fetcher.put(
+      `/api/v1/indexes/${this.indexId}/sources/${sourceId}/reset-checkpoint`
+    );
+  }
+
+  /**
+   * Enable or disable a source
+   *
+   * @param sourceId - The source ID to toggle
+   * @param enable - Whether to enable (true) or disable (false) the source
+   */
+  async toggleSource(sourceId: string, enable: boolean): Promise<void> {
+    await this.fetcher.put(
+      `/api/v1/indexes/${this.indexId}/sources/${sourceId}/toggle`,
+      { enable }
+    );
   }
 
   /**

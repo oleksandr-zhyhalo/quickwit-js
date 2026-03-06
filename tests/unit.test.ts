@@ -123,6 +123,20 @@ describe("QueryBuilder", () => {
     expect(result.params.count_all).toBe(true);
   });
 
+  test("sets allowFailedSplits", () => {
+    const builder = new QueryBuilder().allowFailedSplits();
+    const result = builder.build();
+
+    expect(result.params.allow_failed_splits).toBe(true);
+  });
+
+  test("sets allowFailedSplits to false", () => {
+    const builder = new QueryBuilder().allowFailedSplits(false);
+    const result = builder.build();
+
+    expect(result.params.allow_failed_splits).toBe(false);
+  });
+
   test("adds single aggregation", () => {
     const builder = new QueryBuilder().agg(
       "by_level",

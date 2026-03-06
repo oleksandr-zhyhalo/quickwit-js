@@ -35,6 +35,9 @@ export interface SearchRequestParams {
 
   /** Count all matching documents (slower but accurate) */
   count_all?: boolean;
+
+  /** Allow partial results from failed splits */
+  allow_failed_splits?: boolean;
 }
 
 /**
@@ -54,7 +57,10 @@ export interface SearchResponse<T = Record<string, unknown>> {
   aggregations?: Record<string, AggregationResult>;
 
   /** Errors encountered during search (partial results) */
-  errors?: string[];
+  errors: string[];
+
+  /** Snippet results for highlighted fields */
+  snippets?: Record<string, unknown>[];
 }
 
 // ============================================================================

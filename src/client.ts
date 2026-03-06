@@ -3,6 +3,13 @@ import type {
   HealthResponse,
   IndexMetadata,
   CreateIndexRequest,
+  IndexStats,
+  ListIndexesOptions,
+  CreateIndexOptions,
+  DeleteIndexOptions,
+  UpdateIndexOptions,
+  FileEntry,
+  SourceConfig,
 } from "./types";
 import { Fetcher } from "./utils/fetcher";
 import { Index } from "./index-handle";
@@ -100,12 +107,34 @@ export class QuickwitClient {
   }
 
   /**
+   * Check if the node is live (liveness probe)
+   *
+   * Unlike health()/isHealthy() which check readiness, this checks
+   * basic liveness — whether the process is running and responsive.
+   *
+   * @returns true if the node is live, false otherwise
+   */
+  async isLive(): Promise<boolean> {
+    try {
+      await this.fetcher.get("/health/livez");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * List all indexes in the cluster
    *
+   * @param options - Filtering options
    * @returns Array of index metadata
    */
-  async listIndexes(): Promise<IndexMetadata[]> {
-    return this.fetcher.get<IndexMetadata[]>("/api/v1/indexes");
+  async listIndexes(options?: ListIndexesOptions): Promise<IndexMetadata[]> {
+    const params: Record<string, string | undefined> = {};
+    if (options?.index_id_patterns && options.index_id_patterns.length > 0) {
+      params.index_id_patterns = options.index_id_patterns.join(",");
+    }
+    return this.fetcher.get<IndexMetadata[]>("/api/v1/indexes", { params });
   }
 
   /**
@@ -155,8 +184,42 @@ export class QuickwitClient {
    * });
    * ```
    */
-  async createIndex(config: CreateIndexRequest): Promise<IndexMetadata> {
-    return this.fetcher.post<IndexMetadata>("/api/v1/indexes", config);
+  async createIndex(
+    config: CreateIndexRequest,
+    options?: CreateIndexOptions
+  ): Promise<IndexMetadata> {
+    const params: Record<string, string | boolean | undefined> = {};
+    if (options?.overwrite !== undefined) {
+      params.overwrite = options.overwrite;
+    }
+    return this.fetcher.post<IndexMetadata>("/api/v1/indexes", config, { params });
+  }
+
+  /**
+   * Update an existing index configuration
+   *
+   * This follows PUT semantics: all fields are replaced by the provided values.
+   * Omitting an optional field (e.g., retention_policy) will delete that configuration.
+   *
+   * @param indexId - The index ID to update
+   * @param config - New index configuration
+   * @param options - Update options
+   * @returns Updated index metadata
+   */
+  async updateIndex(
+    indexId: string,
+    config: CreateIndexRequest,
+    options?: UpdateIndexOptions
+  ): Promise<IndexMetadata> {
+    const params: Record<string, string | boolean | undefined> = {};
+    if (options?.create !== undefined) {
+      params.create = options.create;
+    }
+    return this.fetcher.put<IndexMetadata>(
+      `/api/v1/indexes/${indexId}`,
+      config,
+      { params }
+    );
   }
 
   /**
@@ -169,9 +232,32 @@ export class QuickwitClient {
    * await client.deleteIndex("old-logs");
    * ```
    */
-  async deleteIndex(indexId: string): Promise<void> {
-    await this.fetcher.delete(`/api/v1/indexes/${indexId}`);
+  async deleteIndex(
+    indexId: string,
+    options?: DeleteIndexOptions
+  ): Promise<FileEntry[]> {
+    const params: Record<string, string | boolean | undefined> = {};
+    if (options?.dry_run !== undefined) {
+      params.dry_run = options.dry_run;
+    }
+    const result = await this.fetcher.delete<FileEntry[]>(
+      `/api/v1/indexes/${indexId}`,
+      { params }
+    );
     this.indexCache.delete(indexId);
+    return result;
+  }
+
+  /**
+   * Get statistics about an index (number of docs, splits, sizes)
+   *
+   * @param indexId - The index ID to describe
+   * @returns Index statistics
+   */
+  async describeIndex(indexId: string): Promise<IndexStats> {
+    return this.fetcher.get<IndexStats>(
+      `/api/v1/indexes/${indexId}/describe`
+    );
   }
 
   /**

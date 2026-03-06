@@ -32,6 +32,8 @@ export type {
   SearchSettings,
   RetentionPolicy,
   SourceConfig,
+  TransformConfig,
+  TokenizerEntry,
   HttpMethod,
   ApiResponse,
   // Ingest types
@@ -40,6 +42,14 @@ export type {
   IngestResponse,
   // Index management types
   CreateIndexRequest,
+  IndexStats,
+  FileEntry,
+  // Options types
+  ListIndexesOptions,
+  CreateIndexOptions,
+  DeleteIndexOptions,
+  UpdateIndexOptions,
+  UpdateSourceOptions,
 } from "./types";
 
 // Search types

@@ -31,6 +31,7 @@ export class QueryBuilder {
   private _sortBy?: string;
   private _aggs: Record<string, AggregationConfig> = {};
   private _countAll?: boolean;
+  private _allowFailedSplits?: boolean;
 
   /**
    * Create a new QueryBuilder, optionally with an initial query string
@@ -247,6 +248,17 @@ export class QueryBuilder {
   }
 
   /**
+   * Allow partial results from failed splits
+   *
+   * @param allow - Whether to allow failed splits (default: true)
+   * @returns this for chaining
+   */
+  allowFailedSplits(allow = true): this {
+    this._allowFailedSplits = allow;
+    return this;
+  }
+
+  /**
    * Build the query parameters
    *
    * @returns Built query with params and metadata
@@ -280,6 +292,9 @@ export class QueryBuilder {
     }
     if (this._countAll !== undefined) {
       params.count_all = this._countAll;
+    }
+    if (this._allowFailedSplits !== undefined) {
+      params.allow_failed_splits = this._allowFailedSplits;
     }
 
     const hasAggs = Object.keys(this._aggs).length > 0;
@@ -315,6 +330,7 @@ export class QueryBuilder {
     clone._sortBy = this._sortBy;
     clone._aggs = { ...this._aggs };
     clone._countAll = this._countAll;
+    clone._allowFailedSplits = this._allowFailedSplits;
     return clone;
   }
 }
