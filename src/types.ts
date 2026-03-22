@@ -189,6 +189,12 @@ export interface FieldMapping {
 
   /** Fast datetime precision */
   fast_precision?: "seconds" | "milliseconds" | "microseconds" | "nanoseconds";
+
+  /** Whether to store field norms for relevance scoring (text fields only, default: false) */
+  fieldnorms?: boolean;
+
+  /** Input format for bytes fields */
+  input_format?: "hex" | "base64";
 }
 
 /**
