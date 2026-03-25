@@ -67,7 +67,7 @@ export class Index {
    * const results = await index.search({
    *   query: "level:error",
    *   max_hits: 10,
-   *   sort_by: ["-timestamp"]
+   *   sort_by: ["-timestamp"],
    * });
    *
    * // Using QueryBuilder
@@ -83,7 +83,11 @@ export class Index {
     const path = `/api/v1/${this.indexId}/search`;
 
     if (usePost) {
-      return this.fetcher.post<SearchResponse<T>>(path, params);
+      const body: Record<string, unknown> = { ...params };
+      if (params.sort_by !== undefined) {
+        body.sort_by = params.sort_by.join(",");
+      }
+      return this.fetcher.post<SearchResponse<T>>(path, body);
     }
 
     // Convert params to query string format for GET
