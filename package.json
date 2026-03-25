@@ -1,6 +1,6 @@
 {
   "name": "quickwit-js",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Lightweight TypeScript client for Quickwit search engine",
   "license": "MIT",
   "author": "Oleksandr Zhyhalo",
