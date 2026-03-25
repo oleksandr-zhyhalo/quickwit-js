@@ -25,7 +25,7 @@ export interface SearchRequestParams {
   end_timestamp?: number;
 
   /** Sort order (field name, prefix with '-' for descending) */
-  sort_by?: string;
+  sort_by?: string[];
 
   /** Aggregations to compute */
   aggs?: Record<string, AggregationConfig>;

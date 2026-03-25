@@ -52,7 +52,7 @@ await logs.search("level:error AND service:api");
 await logs.search({
   query: "error",
   max_hits: 50,
-  sort_by: "-timestamp",
+  sort_by: ["-timestamp"],
 });
 ```
 

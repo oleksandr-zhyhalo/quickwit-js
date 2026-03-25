@@ -288,7 +288,7 @@ export class QueryBuilder {
       params.end_timestamp = this._endTimestamp;
     }
     if (this._sortBy !== undefined) {
-      params.sort_by = this._sortBy;
+      params.sort_by = [this._sortBy];
     }
     if (this._countAll !== undefined) {
       params.count_all = this._countAll;

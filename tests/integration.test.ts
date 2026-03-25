@@ -332,7 +332,7 @@ describe("Integration Tests", () => {
       const results = await index.search<LogDocument>({
         query: "*",
         max_hits: 5,
-        sort_by: "timestamp",
+        sort_by: ["timestamp"],
       });
 
       // Should return results
@@ -415,7 +415,7 @@ describe("Integration Tests", () => {
 
       const doc = await index.searchFirst<LogDocument>({
         query: "service:auth-service",
-        sort_by: "timestamp",
+        sort_by: ["timestamp"],
       });
 
       expect(doc).toBeDefined();

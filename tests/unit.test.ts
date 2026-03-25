@@ -99,21 +99,21 @@ describe("QueryBuilder", () => {
     const builder = new QueryBuilder().sortBy("timestamp", "desc");
     const result = builder.build();
 
-    expect(result.params.sort_by).toBe("-timestamp");
+    expect(result.params.sort_by).toEqual(["-timestamp"]);
   });
 
   test("sets sort with shorthand (prefix -)", () => {
     const builder = new QueryBuilder().sortBy("-timestamp");
     const result = builder.build();
 
-    expect(result.params.sort_by).toBe("-timestamp");
+    expect(result.params.sort_by).toEqual(["-timestamp"]);
   });
 
   test("sets sort ascending", () => {
     const builder = new QueryBuilder().sortBy("timestamp", "asc");
     const result = builder.build();
 
-    expect(result.params.sort_by).toBe("timestamp");
+    expect(result.params.sort_by).toEqual(["timestamp"]);
   });
 
   test("sets countAll", () => {
@@ -180,7 +180,7 @@ describe("QueryBuilder", () => {
     expect(result.params.snippet_fields).toEqual(["message"]);
     expect(result.params.start_timestamp).toBe(1000);
     expect(result.params.end_timestamp).toBe(2000);
-    expect(result.params.sort_by).toBe("-timestamp");
+    expect(result.params.sort_by).toEqual(["-timestamp"]);
     expect(result.params.count_all).toBe(true);
     expect(result.params.aggs).toHaveProperty("by_level");
     expect(result.requiresPost).toBe(true);
@@ -597,7 +597,7 @@ describe("QueryBuilder + AggregationBuilder Integration", () => {
     expect(query.params.start_timestamp).toBe(1704067200);
     expect(query.params.end_timestamp).toBe(1704153600);
     expect(query.params.max_hits).toBe(100);
-    expect(query.params.sort_by).toBe("-timestamp");
+    expect(query.params.sort_by).toEqual(["-timestamp"]);
     expect(query.params.aggs).toHaveProperty("by_service");
     expect(query.params.aggs).toHaveProperty("over_time");
     expect(query.params.aggs).toHaveProperty("response_stats");

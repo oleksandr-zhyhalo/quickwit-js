@@ -67,7 +67,7 @@ export class Index {
    * const results = await index.search({
    *   query: "level:error",
    *   max_hits: 10,
-   *   sort_by: "-timestamp"
+   *   sort_by: ["-timestamp"]
    * });
    *
    * // Using QueryBuilder
@@ -106,7 +106,7 @@ export class Index {
       queryParams.end_timestamp = params.end_timestamp;
     }
     if (params.sort_by !== undefined) {
-      queryParams.sort_by = params.sort_by;
+      queryParams.sort_by = params.sort_by.join(",");
     }
     if (params.count_all !== undefined) {
       queryParams.count_all = params.count_all;
