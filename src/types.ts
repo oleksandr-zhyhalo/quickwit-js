@@ -139,12 +139,29 @@ export interface TokenizerEntry {
   [key: string]: unknown;
 }
 
+/** Normalizer name for text/json fields with fast columnar storage. */
+export type FastFieldNormalizer = "raw" | "lowercase";
+
+/**
+ * Quickwit serializes `fast` as one of:
+ *   - `false`    — disabled
+ *   - `true`     — enabled with default normalizer (text/json) or plain-fast (numeric)
+ *   - `{ normalizer }` — enabled with a specific normalizer (text/json only)
+ *
+ * Use `isFastFieldEnabled(field)` to check whether fast storage is on — a
+ * plain `=== true` check silently misses the object form.
+ */
+export type FastFieldConfig = boolean | { normalizer: FastFieldNormalizer };
+
 /**
  * Field mapping configuration
  */
 export interface FieldMapping {
   /** Field name */
   name: string;
+
+  /** Optional human-readable description of the field (Quickwit 0.8+). */
+  description?: string;
 
   /** Field type */
   type:
@@ -175,8 +192,12 @@ export interface FieldMapping {
   /** Whether the field is required */
   required?: boolean;
 
-  /** Whether to enable fast fields (columnar storage) */
-  fast?: boolean;
+  /**
+   * Fast columnar storage configuration.
+   * See {@link FastFieldConfig} — can be `true`, `false`, or `{ normalizer }`.
+   * Use {@link isFastFieldEnabled} to check whether fast is on.
+   */
+  fast?: FastFieldConfig;
 
   /** Nested field mappings for object types */
   field_mappings?: FieldMapping[];
@@ -497,4 +518,21 @@ export interface UpdateSourceOptions {
  */
 export interface FileEntry {
   [key: string]: unknown;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Returns true if fast columnar storage is enabled for this field.
+ *
+ * Fast is ON when `fast` is `true` or a `{ normalizer }` object.
+ * Fast is OFF when `fast` is `false` or missing.
+ *
+ * Prefer this over `f.fast === true`, which silently misses the object form
+ * used by text/json fields with an explicit normalizer.
+ */
+export function isFastFieldEnabled(f: FieldMapping): boolean {
+  return f.fast !== undefined && f.fast !== false;
 }

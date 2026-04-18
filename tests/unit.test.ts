@@ -11,7 +11,9 @@ import {
   UnauthorizedError,
   ForbiddenError,
   createErrorFromStatus,
+  isFastFieldEnabled,
 } from "../src";
+import type { FieldMapping } from "../src";
 import { toNDJSON } from "../src/utils/ndjson";
 
 // ============================================================================
@@ -730,5 +732,37 @@ describe("toNDJSON", () => {
 
     expect(parsed.active).toBe(true);
     expect(parsed.deleted).toBe(false);
+  });
+});
+
+// ============================================================================
+// isFastFieldEnabled Tests
+// ============================================================================
+
+describe("isFastFieldEnabled", () => {
+  const mk = (fast: FieldMapping["fast"]): FieldMapping => ({
+    name: "f",
+    type: "text",
+    fast,
+  });
+
+  test("undefined → false", () => {
+    expect(isFastFieldEnabled(mk(undefined))).toBe(false);
+  });
+
+  test("false → false", () => {
+    expect(isFastFieldEnabled(mk(false))).toBe(false);
+  });
+
+  test("true → true", () => {
+    expect(isFastFieldEnabled(mk(true))).toBe(true);
+  });
+
+  test("normalizer raw → true", () => {
+    expect(isFastFieldEnabled(mk({ normalizer: "raw" }))).toBe(true);
+  });
+
+  test("normalizer lowercase → true", () => {
+    expect(isFastFieldEnabled(mk({ normalizer: "lowercase" }))).toBe(true);
   });
 });

@@ -200,7 +200,7 @@ export class QueryBuilder {
    */
   sortBy(field: string, order?: SortOrder): this {
     if (order) {
-      this._sortBy = order === "desc" ? `-${field}` : field;
+      this._sortBy = order === "asc" ? `-${field}` : field;
     } else {
       // Support shorthand: "-field" for descending
       this._sortBy = field;

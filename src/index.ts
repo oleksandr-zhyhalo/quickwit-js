@@ -6,6 +6,9 @@ export { Index } from "./index-handle";
 export { QueryBuilder } from "./search/query-builder";
 export { AggregationBuilder } from "./search/aggregation-builder";
 
+// Type helpers
+export { isFastFieldEnabled } from "./types";
+
 // Error classes
 export {
   QuickwitError,
@@ -28,6 +31,8 @@ export type {
   IndexConfig,
   DocMapping,
   FieldMapping,
+  FastFieldConfig,
+  FastFieldNormalizer,
   IndexingSettings,
   SearchSettings,
   RetentionPolicy,
