@@ -10,6 +10,8 @@ export enum QuickwitErrorCode {
   UNAUTHORIZED = "UNAUTHORIZED",
   FORBIDDEN = "FORBIDDEN",
   BAD_REQUEST = "BAD_REQUEST",
+  CONFLICT = "CONFLICT",
+  TOO_MANY_REQUESTS = "TOO_MANY_REQUESTS",
   INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR",
   SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE",
 }
@@ -97,8 +99,14 @@ export class TimeoutError extends QuickwitError {
   /** Timeout duration in milliseconds */
   readonly timeout: number;
 
-  constructor(message: string, timeout: number, cause?: Error) {
-    super(message, QuickwitErrorCode.TIMEOUT, { cause });
+  constructor(
+    message: string,
+    timeout: number,
+    cause?: Error,
+    status?: number,
+    details?: ErrorDetails
+  ) {
+    super(message, QuickwitErrorCode.TIMEOUT, { cause, status, details });
     this.name = "TimeoutError";
     this.timeout = timeout;
     Object.setPrototypeOf(this, TimeoutError.prototype);
@@ -144,9 +152,13 @@ export class NotFoundError extends QuickwitError {
     options?: {
       resourceType?: string;
       resourceId?: string;
+      details?: ErrorDetails;
     }
   ) {
-    super(message, QuickwitErrorCode.NOT_FOUND, { status: 404 });
+    super(message, QuickwitErrorCode.NOT_FOUND, {
+      status: 404,
+      details: options?.details,
+    });
     this.name = "NotFoundError";
     this.resourceType = options?.resourceType;
     this.resourceId = options?.resourceId;
@@ -158,8 +170,8 @@ export class NotFoundError extends QuickwitError {
  * Error thrown when authentication fails (401)
  */
 export class UnauthorizedError extends QuickwitError {
-  constructor(message: string = "Unauthorized") {
-    super(message, QuickwitErrorCode.UNAUTHORIZED, { status: 401 });
+  constructor(message: string = "Unauthorized", details?: ErrorDetails) {
+    super(message, QuickwitErrorCode.UNAUTHORIZED, { status: 401, details });
     this.name = "UnauthorizedError";
     Object.setPrototypeOf(this, UnauthorizedError.prototype);
   }
@@ -169,8 +181,8 @@ export class UnauthorizedError extends QuickwitError {
  * Error thrown when access is forbidden (403)
  */
 export class ForbiddenError extends QuickwitError {
-  constructor(message: string = "Forbidden") {
-    super(message, QuickwitErrorCode.FORBIDDEN, { status: 403 });
+  constructor(message: string = "Forbidden", details?: ErrorDetails) {
+    super(message, QuickwitErrorCode.FORBIDDEN, { status: 403, details });
     this.name = "ForbiddenError";
     Object.setPrototypeOf(this, ForbiddenError.prototype);
   }
@@ -188,13 +200,23 @@ export function createErrorFromStatus(
     case 400:
       return new ValidationError(message, { details });
     case 401:
-      return new UnauthorizedError(message);
+      return new UnauthorizedError(message, details);
     case 403:
-      return new ForbiddenError(message);
+      return new ForbiddenError(message, details);
     case 404:
-      return new NotFoundError(message);
+      return new NotFoundError(message, { details });
     case 408:
-      return new TimeoutError(message, 0);
+      return new TimeoutError(message, 0, undefined, status, details);
+    case 409:
+      return new QuickwitError(message, QuickwitErrorCode.CONFLICT, {
+        status,
+        details,
+      });
+    case 429:
+      return new QuickwitError(message, QuickwitErrorCode.TOO_MANY_REQUESTS, {
+        status,
+        details,
+      });
     case 500:
       return new QuickwitError(message, QuickwitErrorCode.INTERNAL_SERVER_ERROR, {
         status,

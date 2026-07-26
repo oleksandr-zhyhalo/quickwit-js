@@ -9,10 +9,20 @@ import type {
   DeleteIndexOptions,
   UpdateIndexOptions,
   FileEntry,
-  SourceConfig,
+  ClusterSnapshot,
+  QuickwitVersion,
+  IndexTemplate,
+  RequestOptions,
 } from "./types";
 import { Fetcher } from "./utils/fetcher";
 import { Index } from "./index-handle";
+import { NotFoundError } from "./errors";
+import { TraceIndex } from "./tracing/trace-index";
+import type {
+  OtlpProtobufPayload,
+  OtlpTraceExportResponse,
+  OtlpTraceIngestOptions,
+} from "./tracing/types";
 
 /**
  * Main entry point for interacting with a Quickwit cluster
@@ -72,23 +82,37 @@ export class QuickwitClient {
     return indexHandle;
   }
 
+  /** Query traces through Quickwit's Jaeger-compatible REST API. */
+  traces(indexIdPattern = "otel-traces-v0_*"): TraceIndex {
+    return new TraceIndex(this.fetcher, indexIdPattern);
+  }
+
+  /** Ingest an encoded OTLP ExportTraceServiceRequest protobuf payload. */
+  async ingestOtlpTraces(
+    payload: OtlpProtobufPayload,
+    options: OtlpTraceIngestOptions = {}
+  ): Promise<OtlpTraceExportResponse> {
+    const path = options.indexId === undefined
+      ? "/api/v1/otlp/v1/traces"
+      : `/api/v1/${encodeURIComponent(options.indexId)}/otlp/v1/traces`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/x-protobuf",
+    };
+    if (options.contentEncoding !== undefined) {
+      headers["Content-Encoding"] = options.contentEncoding;
+    }
+    return this.fetcher.postRaw<OtlpTraceExportResponse>(path, payload, { headers });
+  }
+
   /**
    * Check the health of the Quickwit cluster
    *
    * @returns Health status of the cluster
    */
-  async health(): Promise<HealthResponse> {
+  async health(options?: RequestOptions): Promise<HealthResponse> {
     try {
-      const response = await this.fetcher.get<{
-        cluster_id?: string;
-        node_id?: string;
-        version?: string;
-      }>("/health/readyz");
-
-      return {
-        healthy: true,
-        ...response,
-      };
+      await this.fetcher.get<boolean>("/health/readyz", options);
+      return { healthy: true };
     } catch {
       return {
         healthy: false,
@@ -101,8 +125,8 @@ export class QuickwitClient {
    *
    * @returns true if healthy, false otherwise
    */
-  async isHealthy(): Promise<boolean> {
-    const health = await this.health();
+  async isHealthy(options?: RequestOptions): Promise<boolean> {
+    const health = await this.health(options);
     return health.healthy;
   }
 
@@ -114,9 +138,9 @@ export class QuickwitClient {
    *
    * @returns true if the node is live, false otherwise
    */
-  async isLive(): Promise<boolean> {
+  async isLive(options?: RequestOptions): Promise<boolean> {
     try {
-      await this.fetcher.get("/health/livez");
+      await this.fetcher.get("/health/livez", options);
       return true;
     } catch {
       return false;
@@ -144,7 +168,7 @@ export class QuickwitClient {
    * @returns Index metadata
    */
   async getIndex(indexId: string): Promise<IndexMetadata> {
-    return this.fetcher.get<IndexMetadata>(`/api/v1/indexes/${indexId}`);
+    return this.fetcher.get<IndexMetadata>(`/api/v1/indexes/${encodeURIComponent(indexId)}`);
   }
 
   /**
@@ -157,8 +181,11 @@ export class QuickwitClient {
     try {
       await this.getIndex(indexId);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -171,7 +198,7 @@ export class QuickwitClient {
    * @example
    * ```typescript
    * const metadata = await client.createIndex({
-   *   version: "0.7",
+   *   version: "0.9",
    *   index_id: "logs",
    *   doc_mapping: {
    *     field_mappings: [
@@ -199,7 +226,7 @@ export class QuickwitClient {
    * Update an existing index configuration
    *
    * This follows PUT semantics: all fields are replaced by the provided values.
-   * Omitting an optional field (e.g., retention_policy) will delete that configuration.
+   * Omitting an optional field (e.g., retention) will delete that configuration.
    *
    * @param indexId - The index ID to update
    * @param config - New index configuration
@@ -216,7 +243,7 @@ export class QuickwitClient {
       params.create = options.create;
     }
     return this.fetcher.put<IndexMetadata>(
-      `/api/v1/indexes/${indexId}`,
+      `/api/v1/indexes/${encodeURIComponent(indexId)}`,
       config,
       { params }
     );
@@ -241,10 +268,12 @@ export class QuickwitClient {
       params.dry_run = options.dry_run;
     }
     const result = await this.fetcher.delete<FileEntry[]>(
-      `/api/v1/indexes/${indexId}`,
+      `/api/v1/indexes/${encodeURIComponent(indexId)}`,
       { params }
     );
-    this.indexCache.delete(indexId);
+    if (!options?.dry_run) {
+      this.indexCache.delete(indexId);
+    }
     return result;
   }
 
@@ -256,7 +285,7 @@ export class QuickwitClient {
    */
   async describeIndex(indexId: string): Promise<IndexStats> {
     return this.fetcher.get<IndexStats>(
-      `/api/v1/indexes/${indexId}/describe`
+      `/api/v1/indexes/${encodeURIComponent(indexId)}/describe`
     );
   }
 
@@ -272,8 +301,7 @@ export class QuickwitClient {
    * ```
    */
   async clearIndex(indexId: string): Promise<void> {
-    await this.fetcher.put(`/api/v1/indexes/${indexId}/clear`);
-    this.indexCache.delete(indexId);
+    await this.fetcher.put(`/api/v1/indexes/${encodeURIComponent(indexId)}/clear`);
   }
 
   /**
@@ -283,5 +311,50 @@ export class QuickwitClient {
    */
   get endpoint(): string {
     return this.fetcher.getEndpoint();
+  }
+
+  /** Get the cluster state visible from the contacted node. */
+  async getCluster(options?: RequestOptions): Promise<ClusterSnapshot> {
+    return this.fetcher.get<ClusterSnapshot>("/api/v1/cluster", options);
+  }
+
+  /** Get build and runtime version information for the contacted node. */
+  async getVersion(options?: RequestOptions): Promise<QuickwitVersion> {
+    return this.fetcher.get<QuickwitVersion>("/api/v1/version", options);
+  }
+
+  /** List all index templates. */
+  async listTemplates(): Promise<IndexTemplate[]> {
+    return this.fetcher.get<IndexTemplate[]>("/api/v1/templates");
+  }
+
+  /** Get one index template. */
+  async getTemplate(templateId: string): Promise<IndexTemplate> {
+    return this.fetcher.get<IndexTemplate>(
+      `/api/v1/templates/${encodeURIComponent(templateId)}`
+    );
+  }
+
+  /** Create an index template. */
+  async createTemplate(template: IndexTemplate): Promise<IndexTemplate> {
+    return this.fetcher.post<IndexTemplate>("/api/v1/templates", template);
+  }
+
+  /** Replace an index template. The path template ID takes precedence over the body. */
+  async updateTemplate(
+    templateId: string,
+    template: IndexTemplate
+  ): Promise<IndexTemplate> {
+    return this.fetcher.put<IndexTemplate>(
+      `/api/v1/templates/${encodeURIComponent(templateId)}`,
+      template
+    );
+  }
+
+  /** Delete an index template. */
+  async deleteTemplate(templateId: string): Promise<void> {
+    await this.fetcher.delete(
+      `/api/v1/templates/${encodeURIComponent(templateId)}`
+    );
   }
 }

@@ -28,7 +28,7 @@ export class QueryBuilder {
   private _snippetFields?: string[];
   private _startTimestamp?: number;
   private _endTimestamp?: number;
-  private _sortBy?: string;
+  private _sortBy?: string[];
   private _aggs: Record<string, AggregationConfig> = {};
   private _countAll?: boolean;
   private _allowFailedSplits?: boolean;
@@ -65,8 +65,8 @@ export class QueryBuilder {
    * @returns this for chaining
    */
   limit(limit: number): this {
-    if (limit < 0) {
-      throw new ValidationError("Limit must be non-negative", {
+    if (!Number.isSafeInteger(limit) || limit < 0) {
+      throw new ValidationError("Limit must be a non-negative safe integer", {
         fields: ["max_hits"],
       });
     }
@@ -88,8 +88,8 @@ export class QueryBuilder {
    * @returns this for chaining
    */
   offset(offset: number): this {
-    if (offset < 0) {
-      throw new ValidationError("Offset must be non-negative", {
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new ValidationError("Offset must be a non-negative safe integer", {
         fields: ["start_offset"],
       });
     }
@@ -152,9 +152,15 @@ export class QueryBuilder {
    */
   dateRange(start?: Date, end?: Date): this {
     if (start !== undefined) {
+      if (Number.isNaN(start.getTime())) {
+        throw new ValidationError("Start date must be valid", { fields: ["start_timestamp"] });
+      }
       this._startTimestamp = Math.floor(start.getTime() / 1000);
     }
     if (end !== undefined) {
+      if (Number.isNaN(end.getTime())) {
+        throw new ValidationError("End date must be valid", { fields: ["end_timestamp"] });
+      }
       this._endTimestamp = Math.floor(end.getTime() / 1000);
     }
     return this;
@@ -194,17 +200,23 @@ export class QueryBuilder {
    * // Sort by timestamp descending
    * builder.sortBy("timestamp", "desc")
    *
-   * // Using shorthand (prefix with '-' for descending)
+   * // Using shorthand (prefix with '-' for ascending)
    * builder.sortBy("-timestamp")
    * ```
    */
   sortBy(field: string, order?: SortOrder): this {
-    if (order) {
-      this._sortBy = order === "asc" ? `-${field}` : field;
-    } else {
-      // Support shorthand: "-field" for descending
-      this._sortBy = field;
+    if ((this._sortBy?.length ?? 0) >= 2) {
+      throw new ValidationError("Quickwit supports at most two sort fields", {
+        fields: ["sort_by"],
+      });
     }
+    let sortField = field;
+    if (order) {
+      const unprefixedField = field.replace(/^[+-]/, "");
+      sortField = order === "asc" ? `-${unprefixedField}` : unprefixedField;
+    }
+    this._sortBy ??= [];
+    this._sortBy.push(sortField);
     return this;
   }
 
@@ -276,10 +288,10 @@ export class QueryBuilder {
       params.start_offset = this._startOffset;
     }
     if (this._searchFields !== undefined && this._searchFields.length > 0) {
-      params.search_fields = this._searchFields;
+      params.search_fields = [...this._searchFields];
     }
     if (this._snippetFields !== undefined && this._snippetFields.length > 0) {
-      params.snippet_fields = this._snippetFields;
+      params.snippet_fields = [...this._snippetFields];
     }
     if (this._startTimestamp !== undefined) {
       params.start_timestamp = this._startTimestamp;
@@ -288,7 +300,7 @@ export class QueryBuilder {
       params.end_timestamp = this._endTimestamp;
     }
     if (this._sortBy !== undefined) {
-      params.sort_by = [this._sortBy];
+      params.sort_by = [...this._sortBy];
     }
     if (this._countAll !== undefined) {
       params.count_all = this._countAll;
@@ -299,7 +311,7 @@ export class QueryBuilder {
 
     const hasAggs = Object.keys(this._aggs).length > 0;
     if (hasAggs) {
-      params.aggs = this._aggs;
+      params.aggs = structuredClone(this._aggs);
     }
 
     return {
@@ -327,8 +339,8 @@ export class QueryBuilder {
     clone._snippetFields = this._snippetFields ? [...this._snippetFields] : undefined;
     clone._startTimestamp = this._startTimestamp;
     clone._endTimestamp = this._endTimestamp;
-    clone._sortBy = this._sortBy;
-    clone._aggs = { ...this._aggs };
+    clone._sortBy = this._sortBy ? [...this._sortBy] : undefined;
+    clone._aggs = structuredClone(this._aggs);
     clone._countAll = this._countAll;
     clone._allowFailedSplits = this._allowFailedSplits;
     return clone;

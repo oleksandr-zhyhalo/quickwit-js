@@ -12,7 +12,7 @@ export interface SearchRequestParams {
   /** Number of hits to skip (for pagination) */
   start_offset?: number;
 
-  /** Fields to return in the response */
+  /** Default fields to search when the query does not name a field */
   search_fields?: string[];
 
   /** Snippet configuration for highlighting */
@@ -24,13 +24,13 @@ export interface SearchRequestParams {
   /** End of time range filter (Unix timestamp in seconds) */
   end_timestamp?: number;
 
-  /** Sort order (field name, prefix with '-' for descending) */
+  /** Sort order (plain/`+` is descending; `-` is ascending in Quickwit 0.9) */
   sort_by?: string[];
 
   /** Aggregations to compute */
   aggs?: Record<string, AggregationConfig>;
 
-  /** Format for returned timestamps */
+  /** JSON response formatting */
   format?: "json" | "pretty_json";
 
   /** Count all matching documents (slower but accurate) */
@@ -81,7 +81,9 @@ export type AggregationConfig =
   | MaxAggregation
   | CountAggregation
   | StatsAggregation
-  | PercentilesAggregation;
+  | ExtendedStatsAggregation
+  | PercentilesAggregation
+  | CardinalityAggregation;
 
 /**
  * Terms aggregation - buckets by unique field values
@@ -93,6 +95,12 @@ export interface TermsAggregation {
 
     /** Maximum number of buckets to return */
     size?: number;
+
+    /** Number of terms collected from each split */
+    shard_size?: number;
+
+    /** Include per-bucket document count errors */
+    show_term_doc_count_error?: boolean;
 
     /** Minimum document count for a bucket to be included */
     min_doc_count?: number;
@@ -119,11 +127,14 @@ export interface HistogramAggregation {
     /** Interval between buckets */
     interval: number;
 
-    /** Minimum bucket key */
-    min_bound?: number;
+    /** Return buckets as an object keyed by bucket key */
+    keyed?: boolean;
 
-    /** Maximum bucket key */
-    max_bound?: number;
+    /** Extend the generated bucket range */
+    extended_bounds?: NumericBounds;
+
+    /** Limit the generated bucket range */
+    hard_bounds?: NumericBounds;
 
     /** Minimum document count for a bucket */
     min_doc_count?: number;
@@ -145,13 +156,10 @@ export interface DateHistogramAggregation {
     field: string;
 
     /** Fixed interval (e.g., "1h", "1d", "1w") */
-    fixed_interval?: string;
+    fixed_interval: string;
 
-    /** Calendar interval (e.g., "month", "year") */
-    calendar_interval?: string;
-
-    /** Timezone for bucketing */
-    time_zone?: string;
+    /** Return buckets as an object keyed by bucket key */
+    keyed?: boolean;
 
     /** Minimum document count for a bucket */
     min_doc_count?: number;
@@ -162,8 +170,11 @@ export interface DateHistogramAggregation {
       max: number | string;
     };
 
-    /** Format for the returned date keys */
-    format?: string;
+    /** Hard bounds for the histogram */
+    hard_bounds?: {
+      min: number | string;
+      max: number | string;
+    };
 
     /** Offset for bucket boundaries */
     offset?: string;
@@ -254,6 +265,7 @@ export interface CountAggregation {
   value_count: {
     /** Field to count values on */
     field: string;
+    missing?: number;
   };
 }
 
@@ -269,6 +281,14 @@ export interface StatsAggregation {
   };
 }
 
+export interface ExtendedStatsAggregation {
+  extended_stats: {
+    field: string;
+    missing?: number;
+    sigma?: number;
+  };
+}
+
 /**
  * Percentiles metric aggregation
  */
@@ -280,7 +300,20 @@ export interface PercentilesAggregation {
     percents?: number[];
     /** Value to use for missing field */
     missing?: number;
+    keyed?: boolean;
   };
+}
+
+export interface CardinalityAggregation {
+  cardinality: {
+    field: string;
+    missing?: string | number;
+  };
+}
+
+export interface NumericBounds {
+  min: number;
+  max: number;
 }
 
 // ============================================================================
@@ -294,13 +327,14 @@ export type AggregationResult =
   | BucketAggregationResult
   | MetricAggregationResult
   | StatsAggregationResult
+  | ExtendedStatsAggregationResult
   | PercentilesAggregationResult;
 
 /**
  * Result for bucket aggregations (terms, histogram, date_histogram, range)
  */
 export interface BucketAggregationResult {
-  buckets: AggregationBucket[];
+  buckets: AggregationBucket[] | Record<string, AggregationBucket>;
 
   /** For terms aggregation: count of documents not in top buckets */
   sum_other_doc_count?: number;
@@ -321,6 +355,12 @@ export interface AggregationBucket {
 
   /** Number of documents in this bucket */
   doc_count: number;
+
+  /** Range bucket lower bound */
+  from?: number;
+
+  /** Range bucket upper bound */
+  to?: number;
 
   /** Nested aggregation results */
   [key: string]: unknown;
@@ -344,11 +384,31 @@ export interface StatsAggregationResult {
   sum: number;
 }
 
+export interface ExtendedStatsAggregationResult extends StatsAggregationResult {
+  sum_of_squares: number | null;
+  variance: number | null;
+  variance_population: number | null;
+  variance_sampling: number | null;
+  std_deviation: number | null;
+  std_deviation_population: number | null;
+  std_deviation_sampling: number | null;
+  std_deviation_bounds: {
+    upper: number;
+    lower: number;
+    upper_population: number;
+    lower_population: number;
+    upper_sampling: number;
+    lower_sampling: number;
+  } | null;
+}
+
 /**
  * Result for percentiles aggregation
  */
 export interface PercentilesAggregationResult {
-  values: Record<string, number | null>;
+  values:
+    | Record<string, number | null>
+    | Array<{ key: number; value: number | null }>;
 }
 
 // ============================================================================

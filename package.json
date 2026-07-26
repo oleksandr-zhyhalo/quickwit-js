@@ -1,18 +1,24 @@
 {
   "name": "quickwit-js",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "description": "Lightweight TypeScript client for Quickwit search engine",
   "license": "MIT",
   "author": "Oleksandr Zhyhalo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/oleksandr-zhyhalo/quickwit-js.git"
+    "url": "git+https://github.com/oleksandr-zhyhalo/quickwit-js.git"
   },
   "publishConfig": {
     "access": "public"
   },
   "homepage": "https://github.com/oleksandr-zhyhalo/quickwit-js",
   "type": "module",
+  "sideEffects": [
+    "./src/**"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -40,16 +46,17 @@
   ],
   "scripts": {
     "build": "bun run build:esm && bun run build:cjs && bun run build:types",
-    "build:esm": "bun build ./src/index.ts --outdir ./dist --target node",
-    "build:cjs": "bun build ./src/index.ts --outfile ./dist/index.cjs --target node",
-    "build:types": "tsc -p tsconfig.build.json && cp dist/index.d.ts dist/index.d.cts",
-    "test": "bun test",
-    "prepublishOnly": "bun run build && bun test"
+    "build:esm": "bun build ./src/index.ts --outdir ./dist --target=node --format=esm",
+    "build:cjs": "bun build ./src/index.ts --outfile ./dist/index.cjs --target=node --format=cjs",
+    "build:types": "dts-bundle-generator -o ./dist/index.d.ts ./src/index.ts && cp dist/index.d.ts dist/index.d.cts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test tests/unit.test.ts",
+    "test:integration": "bun test --timeout 30000 tests/integration.test.ts",
+    "prepublishOnly": "bun run typecheck && bun run build && bun test tests/unit.test.ts"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "^1.3.14",
+    "dts-bundle-generator": "^9.5.1",
+    "typescript": "^5.9.3"
   }
 }

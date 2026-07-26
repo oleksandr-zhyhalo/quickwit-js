@@ -8,7 +8,10 @@ import type {
   IngestOptions,
   IngestResponse,
   SourceConfig,
+  SourceConfigRequest,
   UpdateSourceOptions,
+  DeleteQueryRequest,
+  DeleteTask,
 } from "./types";
 import { QueryBuilder } from "./search/query-builder";
 import { toNDJSON } from "./utils/ndjson";
@@ -67,12 +70,12 @@ export class Index {
    * const results = await index.search({
    *   query: "level:error",
    *   max_hits: 10,
-   *   sort_by: ["-timestamp"],
+    *   sort_by: ["timestamp"],
    * });
    *
    * // Using QueryBuilder
    * const results = await index.search(
-   *   index.query("error").limit(10).sortBy("-timestamp")
+    *   index.query("error").limit(10).sortBy("timestamp", "desc")
    * );
    * ```
    */
@@ -80,10 +83,18 @@ export class Index {
     query?: string | SearchRequestParams | QueryBuilder | BuiltQuery
   ): Promise<SearchResponse<T>> {
     const { params, usePost } = this.normalizeQuery(query);
-    const path = `/api/v1/${this.indexId}/search`;
+    const path = `/api/v1/${encodeURIComponent(this.indexId)}/search`;
 
     if (usePost) {
       const body: Record<string, unknown> = { ...params };
+      delete body.search_fields;
+      delete body.snippet_fields;
+      if (params.search_fields !== undefined && params.search_fields.length > 0) {
+        body.search_field = params.search_fields.join(",");
+      }
+      if (params.snippet_fields !== undefined && params.snippet_fields.length > 0) {
+        body.snippet_fields = params.snippet_fields.join(",");
+      }
       if (params.sort_by !== undefined) {
         body.sort_by = params.sort_by.join(",");
       }
@@ -117,6 +128,9 @@ export class Index {
     }
     if (params.allow_failed_splits !== undefined) {
       queryParams.allow_failed_splits = params.allow_failed_splits;
+    }
+    if (params.format !== undefined) {
+      queryParams.format = params.format;
     }
     if (params.search_fields !== undefined && params.search_fields.length > 0) {
       queryParams.search_field = params.search_fields.join(",");
@@ -196,8 +210,8 @@ export class Index {
    * const result = await index.ingest(documents, { commit: "force" });
    * ```
    */
-  async ingest<T extends Record<string, unknown>>(
-    documents: T[],
+  async ingest<T extends object>(
+    documents: readonly T[],
     options?: IngestOptions
   ): Promise<IngestResponse> {
     if (documents.length === 0) {
@@ -206,12 +220,23 @@ export class Index {
       });
     }
 
-    const ndjsonBody = toNDJSON(documents);
-    const path = `/api/v1/${this.indexId}/ingest`;
+    let ndjsonBody: string;
+    try {
+      ndjsonBody = toNDJSON(documents);
+    } catch (error) {
+      throw new ValidationError(
+        `Failed to serialize documents: ${error instanceof Error ? error.message : String(error)}`,
+        { fields: ["documents"] }
+      );
+    }
+    const path = `/api/v1/${encodeURIComponent(this.indexId)}/ingest`;
 
-    const params: Record<string, string> = {};
+    const params: Record<string, string | boolean> = {};
     if (options?.commit) {
       params.commit = options.commit;
+    }
+    if (options?.detailed_response !== undefined) {
+      params.detailed_response = options.detailed_response;
     }
 
     return this.fetcher.postNDJSON<IngestResponse>(path, ndjsonBody, { params });
@@ -223,9 +248,9 @@ export class Index {
    * @param config - Source configuration
    * @returns Created source configuration
    */
-  async createSource(config: SourceConfig): Promise<SourceConfig> {
+  async createSource(config: SourceConfigRequest): Promise<SourceConfig> {
     return this.fetcher.post<SourceConfig>(
-      `/api/v1/indexes/${this.indexId}/sources`,
+      `/api/v1/indexes/${encodeURIComponent(this.indexId)}/sources`,
       config
     );
   }
@@ -240,7 +265,7 @@ export class Index {
    */
   async updateSource(
     sourceId: string,
-    config: SourceConfig,
+    config: SourceConfigRequest,
     options?: UpdateSourceOptions
   ): Promise<SourceConfig> {
     const params: Record<string, string | boolean | undefined> = {};
@@ -248,7 +273,7 @@ export class Index {
       params.create = options.create;
     }
     return this.fetcher.put<SourceConfig>(
-      `/api/v1/indexes/${this.indexId}/sources/${sourceId}`,
+      `/api/v1/indexes/${encodeURIComponent(this.indexId)}/sources/${encodeURIComponent(sourceId)}`,
       config,
       { params }
     );
@@ -261,7 +286,7 @@ export class Index {
    */
   async deleteSource(sourceId: string): Promise<void> {
     await this.fetcher.delete(
-      `/api/v1/indexes/${this.indexId}/sources/${sourceId}`
+      `/api/v1/indexes/${encodeURIComponent(this.indexId)}/sources/${encodeURIComponent(sourceId)}`
     );
   }
 
@@ -272,7 +297,7 @@ export class Index {
    */
   async resetSourceCheckpoint(sourceId: string): Promise<void> {
     await this.fetcher.put(
-      `/api/v1/indexes/${this.indexId}/sources/${sourceId}/reset-checkpoint`
+      `/api/v1/indexes/${encodeURIComponent(this.indexId)}/sources/${encodeURIComponent(sourceId)}/reset-checkpoint`
     );
   }
 
@@ -284,8 +309,28 @@ export class Index {
    */
   async toggleSource(sourceId: string, enable: boolean): Promise<void> {
     await this.fetcher.put(
-      `/api/v1/indexes/${this.indexId}/sources/${sourceId}/toggle`,
+      `/api/v1/indexes/${encodeURIComponent(this.indexId)}/sources/${encodeURIComponent(sourceId)}/toggle`,
       { enable }
+    );
+  }
+
+  /** Queue deletion of documents matching a query. */
+  async createDeleteTask(request: DeleteQueryRequest): Promise<DeleteTask> {
+    const body: Record<string, unknown> = { ...request };
+    delete body.search_fields;
+    if (request.search_fields !== undefined) {
+      body.search_field = [...request.search_fields];
+    }
+    return this.fetcher.post<DeleteTask>(
+      `/api/v1/${encodeURIComponent(this.indexId)}/delete-tasks`,
+      body
+    );
+  }
+
+  /** List queued and completed delete tasks for this index. */
+  async listDeleteTasks(): Promise<DeleteTask[]> {
+    return this.fetcher.get<DeleteTask[]>(
+      `/api/v1/${encodeURIComponent(this.indexId)}/delete-tasks`
     );
   }
 
@@ -296,7 +341,7 @@ export class Index {
     query?: string | SearchRequestParams | QueryBuilder | BuiltQuery
   ): { params: SearchRequestParams; usePost: boolean } {
     if (query === undefined) {
-      return { params: {}, usePost: false };
+      return { params: { query: "*" }, usePost: false };
     }
 
     if (typeof query === "string") {
@@ -305,16 +350,23 @@ export class Index {
 
     if (query instanceof QueryBuilder) {
       const built = query.build();
-      return { params: built.params, usePost: built.requiresPost };
+      const params = { ...built.params };
+      params.query ??= "*";
+      return { params, usePost: built.requiresPost };
     }
 
     // Check if it's a BuiltQuery
     if ("params" in query && "requiresPost" in query) {
-      return { params: query.params, usePost: query.requiresPost };
+      const params = { ...query.params };
+      params.query ??= "*";
+      const hasAggs = params.aggs !== undefined && Object.keys(params.aggs).length > 0;
+      return { params, usePost: query.requiresPost || hasAggs };
     }
 
     // It's a SearchRequestParams
     const hasAggs = query.aggs !== undefined && Object.keys(query.aggs).length > 0;
-    return { params: query, usePost: hasAggs };
+    const params = { ...query };
+    params.query ??= "*";
+    return { params, usePost: hasAggs };
   }
 }

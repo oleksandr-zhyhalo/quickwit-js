@@ -19,9 +19,18 @@
  * // Result: '{"id":1,"name":"foo"}\n{"id":2,"name":"bar"}'
  * ```
  */
-export function toNDJSON<T>(documents: T[]): string {
+export function toNDJSON<T>(documents: readonly T[]): string {
   if (documents.length === 0) {
     return "";
   }
-  return documents.map((doc) => JSON.stringify(doc)).join("\n") + "\n";
+  return documents.map((doc) => {
+    const serialized = JSON.stringify(doc);
+    if (serialized === undefined) {
+      throw new TypeError("A document did not serialize to JSON");
+    }
+    if (serialized.charCodeAt(0) !== 0x7b) {
+      throw new TypeError("Each document must serialize to a JSON object");
+    }
+    return serialized;
+  }).join("\n") + "\n";
 }

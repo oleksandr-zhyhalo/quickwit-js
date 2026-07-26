@@ -1,198 +1,269 @@
 # quickwit-js
 
-A lightweight, universal TypeScript client for [Quickwit](https://quickwit.io) search engine.
+A TypeScript client for Quickwit 0.9 search, ingestion, index management, and tracing APIs.
 
 ## Installation
 
 ```bash
+npm install quickwit-js
+# or
 bun add quickwit-js
 ```
 
-## Quick Start
+Node.js 18 or newer is required. The package provides ESM and CommonJS entry points.
+
+## Client
 
 ```typescript
-import { QuickwitClient, AggregationBuilder } from "quickwit-js";
+import { QuickwitClient } from "quickwit-js";
 
-const client = new QuickwitClient("http://localhost:7280");
-const logs = client.index("logs");
-
-// Simple search
-const results = await logs.search("level:error");
-console.log(results.hits);
-
-// With query builder
-const results = await logs.search(
-  logs.query("error")
-    .timeRange(1704067200, 1704153600)
-    .limit(20)
-    .sortBy("-timestamp")
-);
-```
-
-## Configuration
-
-```typescript
 const client = new QuickwitClient({
   endpoint: "http://localhost:7280",
-  apiKey: "your-api-key",        // optional
-  bearerToken: "your-token",     // optional
-  timeout: 30000,                // optional, ms
+  timeout: 30_000,
+  apiKey: "optional-api-key",
+  bearerToken: "optional-bearer-token",
 });
+
+const ready = await client.isHealthy();
+const live = await client.isLive();
+const version = await client.getVersion({ timeout: 5_000 });
+const cluster = await client.getCluster({ timeout: 5_000 });
 ```
 
-## Search API
+The endpoint may include a reverse-proxy path prefix, such as `https://example.com/quickwit`.
 
-### Basic Search
+## Search
 
 ```typescript
-// String query
-await logs.search("level:error AND service:api");
+const logs = client.index("logs");
 
-// With parameters
-await logs.search({
-  query: "error",
+const response = await logs.search({
+  query: "level:error",
   max_hits: 50,
-  sort_by: ["-timestamp"],
+  sort_by: ["timestamp"],
 });
+
+console.log(response.hits);
 ```
+
+`search()`, `searchHits()`, and `searchFirst()` default to the match-all query `*` when you omit the query.
 
 ### Query Builder
 
 ```typescript
-const query = logs.query("error")
-  .limit(20)
-  .offset(0)
-  .timeRange(startTs, endTs)      // Unix timestamps (seconds)
-  .dateRange(startDate, endDate)  // Date objects
-  .sortBy("-timestamp")           // - prefix for descending
-  .searchFields("message", "body")
-  .snippetFields("message")
-  .countAll();
-
-const results = await logs.search(query);
+const response = await logs.search(
+  logs.query("error")
+    .timeRange(1704067200, 1704153600)
+    .limit(20)
+    .sortBy("timestamp", "desc")
+    .searchFields("message", "body")
+    .snippetFields("message")
+    .countAll()
+);
 ```
+
+Quickwit 0.9 uses an unusual sort mini-language:
+
+- `timestamp` and `+timestamp` sort descending.
+- `-timestamp` sorts ascending.
+- `.sortBy("timestamp", "desc")` and `.sortBy("timestamp", "asc")` handle these prefixes for you.
+- You may call `.sortBy()` twice to sort on two fields.
 
 ### Aggregations
 
 ```typescript
 import { AggregationBuilder } from "quickwit-js";
 
-const results = await logs.search(
+const response = await logs.search(
   logs.query("*")
+    .limit(0)
     .agg("by_level", AggregationBuilder.terms("level", { size: 10 }))
     .agg("over_time", AggregationBuilder.dateHistogram("timestamp", "1h"))
-    .agg("response_stats", AggregationBuilder.stats("response_time"))
+    .agg("latency", AggregationBuilder.extendedStats("response_time"))
+    .agg("services", AggregationBuilder.cardinality("service"))
 );
-
-console.log(results.aggregations);
 ```
 
-Available aggregations:
-- `terms(field, { size?, minDocCount?, order? })`
-- `histogram(field, interval, { minBound?, maxBound? })`
-- `dateHistogram(field, interval, { timeZone?, format? })`
-- `range(field, ranges[])`
-- `avg(field)`, `sum(field)`, `min(field)`, `max(field)`
-- `stats(field)`, `percentiles(field, { percents? })`
-- `count(field)`
+Supported builders include terms, histogram, fixed-interval date histogram, range, average, sum, min, max, count, stats, extended stats, percentiles, and cardinality.
 
-### Convenience Methods
+Quickwit 0.9 does not support calendar date histograms. Histogram bounds use `extendedBounds` and `hardBounds`:
 
 ```typescript
-// Get only document sources
-const docs = await logs.searchHits("error");
-
-// Get first match
-const doc = await logs.searchFirst("error");
-
-// Count matches
-const count = await logs.count("level:error");
+AggregationBuilder.histogram("response_time", 100, {
+  extendedBounds: { min: 0, max: 1000 },
+  hardBounds: { min: 0, max: 1000 },
+});
 ```
 
-## Error Handling
+## Ingest
 
 ```typescript
-import {
-  QuickwitError,
-  ConnectionError,
-  TimeoutError,
-  NotFoundError
-} from "quickwit-js";
+const result = await logs.ingest(documents, {
+  commit: "wait_for",
+  detailed_response: true,
+});
 
-try {
-  await logs.search("error");
-} catch (error) {
-  if (error instanceof TimeoutError) {
-    console.log(`Timed out after ${error.timeout}ms`);
-  } else if (error instanceof NotFoundError) {
-    console.log("Index not found");
-  } else if (error instanceof ConnectionError) {
-    console.log("Failed to connect");
-  }
-}
+console.log({
+  submitted: result.num_docs_for_processing,
+  ingested: result.num_ingested_docs,
+  rejected: result.num_rejected_docs,
+  failures: result.parse_failures,
+});
 ```
 
-## Document Ingest
+Quickwit ingest v2 returns HTTP 200 for partially accepted batches. Check `num_rejected_docs` even when the request succeeds. `parse_failures` is present only when `detailed_response` is enabled. Legacy ingest v1 returns only `num_docs_for_processing` and does not support detailed responses.
+
+Commit modes are `auto`, `wait_for`, and `force`.
+
+## Indexes
 
 ```typescript
-const logs = client.index("logs");
-
-// Ingest documents (batch)
-const result = await logs.ingest([
-  { timestamp: Date.now(), level: "info", message: "User logged in" },
-  { timestamp: Date.now(), level: "error", message: "Connection failed" },
-]);
-console.log(`Queued ${result.num_docs_for_processing} documents`);
-
-// With commit mode
-await logs.ingest(documents, { commit: "auto" });      // Default: queued immediately
-await logs.ingest(documents, { commit: "wait_for" });  // Wait for commit threshold
-await logs.ingest(documents, { commit: "force" });     // Immediate commit (slower)
-```
-
-## Index Management
-
-```typescript
-// Create an index
 await client.createIndex({
-  version: "0.7",
+  version: "0.9",
   index_id: "logs",
   doc_mapping: {
     field_mappings: [
-      { name: "timestamp", type: "datetime", fast: true },
-      { name: "level", type: "text", tokenizer: "raw" },
+      {
+        name: "timestamp",
+        type: "datetime",
+        input_formats: ["unix_timestamp"],
+        fast: true,
+      },
+      { name: "level", type: "text", tokenizer: "raw", fast: true },
       { name: "message", type: "text" },
     ],
     timestamp_field: "timestamp",
   },
 });
 
-// Delete an index
-await client.deleteIndex("old-logs");
-
-// Clear all documents (keeps index config)
-await client.clearIndex("logs");
-```
-
-## Client Methods
-
-```typescript
-// Health check
-const health = await client.health();
-const isHealthy = await client.isHealthy();
-
-// Index operations
 const indexes = await client.listIndexes();
 const metadata = await client.getIndex("logs");
-const exists = await client.indexExists("logs");
+const stats = await client.describeIndex("logs");
+
+await client.clearIndex("logs");
+await client.deleteIndex("logs");
 ```
+
+Index handles also provide source creation, update, deletion, checkpoint reset, and enable/disable methods.
+
+## Delete Tasks
+
+```typescript
+const task = await logs.createDeleteTask({
+  query: "level:debug",
+  search_fields: ["message"],
+  start_timestamp: 1704067200,
+  end_timestamp: 1704153600,
+});
+
+const tasks = await logs.listDeleteTasks();
+```
+
+Delete tasks run asynchronously inside Quickwit.
+
+## Index Templates
+
+```typescript
+const templates = await client.listTemplates();
+const template = await client.getTemplate("logs-template");
+
+await client.createTemplate({
+  version: "0.9",
+  template_id: "logs-template",
+  index_id_patterns: ["logs-*"],
+  doc_mapping: { mode: "dynamic" },
+});
+
+await client.updateTemplate("logs-template", template);
+await client.deleteTemplate("logs-template");
+```
+
+## Tracing
+
+### Jaeger Query API
+
+```typescript
+const traces = client.traces(); // Uses otel-traces-v0_*
+
+const services = await traces.listServices();
+const operations = await traces.listOperations("checkout");
+
+const matches = await traces.search({
+  service: "checkout",
+  operation: "POST /orders",
+  start: 1704067200000000, // Unix epoch microseconds
+  end: 1704153600000000,
+  minDuration: "100ms",
+  tags: { error: "true" },
+  limit: 20,
+});
+
+const trace = await traces.getTrace("1506026ddd216249555653218dc88a6c");
+```
+
+Quickwit accepts `lookback` for Jaeger compatibility but does not apply it in version 0.9.
+
+### OTLP Protobuf Ingest
+
+Pass an encoded OpenTelemetry `ExportTraceServiceRequest` protobuf message:
+
+```typescript
+const result = await client.ingestOtlpTraces(encodedPayload);
+
+await client.ingestOtlpTraces(encodedPayload, {
+  indexId: "otel-traces-v0_9",
+});
+
+console.log(result.partial_success?.rejected_spans ?? 0);
+```
+
+The client does not include an OpenTelemetry protobuf implementation. Use your existing OpenTelemetry exporter or protobuf package to produce the `Uint8Array` payload.
+
+## Errors
+
+```typescript
+import {
+  ConnectionError,
+  NotFoundError,
+  QuickwitError,
+  TimeoutError,
+} from "quickwit-js";
+
+try {
+  await logs.search("error");
+} catch (error) {
+  if (error instanceof NotFoundError) {
+    console.error("Index not found");
+  } else if (error instanceof TimeoutError) {
+    console.error(`Timed out after ${error.timeout}ms`);
+  } else if (error instanceof ConnectionError) {
+    console.error("Could not reach Quickwit");
+  } else if (error instanceof QuickwitError) {
+    console.error(error.status, error.details);
+  }
+}
+```
+
+`indexExists()` returns `false` only for a 404 response. It rethrows connection, authentication, timeout, and server errors.
 
 ## Development
 
 ```bash
 bun install
+bun run typecheck
 bun test
+bun run build
 ```
+
+Integration tests refuse non-loopback endpoints and must use a local Quickwit instance:
+
+```bash
+QUICKWIT_ENDPOINT=http://localhost:7280 bun run test:integration
+```
+
+## Compatibility
+
+`quickwit-js` 0.4 targets Quickwit 0.9. The client intentionally omits lower-level and diagnostic routes such as search-plan, tail, splits, mark-for-deletion, node config, indexing diagnostics, metrics, `_elastic`, developer endpoints, and OTLP logs.
 
 ## License
 

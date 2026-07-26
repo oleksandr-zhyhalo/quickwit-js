@@ -13,6 +13,11 @@ import {
 
 const QUICKWIT_ENDPOINT = process.env.QUICKWIT_ENDPOINT || "http://localhost:7280";
 
+const integrationHost = new URL(QUICKWIT_ENDPOINT).hostname;
+if (integrationHost !== "localhost" && integrationHost !== "127.0.0.1" && integrationHost !== "::1") {
+  throw new Error("Integration tests are restricted to a local Quickwit instance");
+}
+
 // Generate unique index ID to avoid conflicts
 function generateTestIndexId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -70,7 +75,7 @@ const sampleLogs: LogDocument[] = [
 // Create a standard log index configuration
 function createLogIndexConfig(indexId: string) {
   return {
-    version: "0.7",
+    version: "0.9" as const,
     index_id: indexId,
     doc_mapping: {
       field_mappings: [
@@ -163,7 +168,7 @@ describe("Integration Tests", () => {
       const metadata = await client.createIndex(createLogIndexConfig(indexId));
 
       expect(metadata.index_config.index_id).toBe(indexId);
-      expect(metadata.index_config.doc_mapping.field_mappings.length).toBeGreaterThan(0);
+      expect(metadata.index_config.doc_mapping.field_mappings!.length).toBeGreaterThan(0);
     });
 
     test("listIndexes() includes created index", async () => {

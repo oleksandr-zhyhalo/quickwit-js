@@ -5,6 +5,7 @@ export { Index } from "./index-handle";
 // Query and aggregation builders
 export { QueryBuilder } from "./search/query-builder";
 export { AggregationBuilder } from "./search/aggregation-builder";
+export { TraceIndex } from "./tracing/trace-index";
 
 // Type helpers
 export { isFastFieldEnabled } from "./types";
@@ -26,17 +27,39 @@ export {
 // Core types
 export type {
   QuickwitConfig,
+  RequestOptions,
   HealthResponse,
   IndexMetadata,
   IndexConfig,
   DocMapping,
   FieldMapping,
+  TextFieldMapping,
+  NumericFieldMapping,
+  BoolOrIpFieldMapping,
+  DatetimeFieldMapping,
+  BytesFieldMapping,
+  JsonFieldMapping,
+  ObjectFieldMapping,
+  ConcatenateFieldMapping,
+  ArrayFieldMapping,
   FastFieldConfig,
   FastFieldNormalizer,
   IndexingSettings,
+  IngestSettings,
+  MergePolicy,
+  ResourcesConfig,
   SearchSettings,
   RetentionPolicy,
   SourceConfig,
+  SourceConfigRequest,
+  SourceInputFormat,
+  FileSourceParams,
+  FileSourceNotification,
+  KafkaSourceParams,
+  KinesisSourceParams,
+  PubSubSourceParams,
+  PulsarSourceParams,
+  PulsarSourceAuth,
   TransformConfig,
   TokenizerEntry,
   HttpMethod,
@@ -45,6 +68,7 @@ export type {
   CommitMode,
   IngestOptions,
   IngestResponse,
+  IngestParseFailure,
   // Index management types
   CreateIndexRequest,
   IndexStats,
@@ -55,6 +79,13 @@ export type {
   DeleteIndexOptions,
   UpdateIndexOptions,
   UpdateSourceOptions,
+  QuickwitVersion,
+  ClusterSnapshot,
+  ClusterNodeId,
+  DeleteQueryRequest,
+  DeleteQuery,
+  DeleteTask,
+  IndexTemplate,
 } from "./types";
 
 // Search types
@@ -79,12 +110,16 @@ export type {
   MaxAggregation,
   CountAggregation,
   StatsAggregation,
+  ExtendedStatsAggregation,
   PercentilesAggregation,
+  CardinalityAggregation,
+  NumericBounds,
   AggregationResult,
   BucketAggregationResult,
   AggregationBucket,
   MetricAggregationResult,
   StatsAggregationResult,
+  ExtendedStatsAggregationResult,
   PercentilesAggregationResult,
 } from "./search/types";
 
@@ -97,4 +132,20 @@ export type {
   RangeOptions,
   MetricOptions,
   PercentilesOptions,
+  ExtendedStatsOptions,
 } from "./search/aggregation-builder";
+
+export type {
+  OtlpProtobufPayload,
+  OtlpTraceIngestOptions,
+  OtlpTraceExportResponse,
+  TraceSearchParams,
+  JaegerResponse,
+  JaegerValueType,
+  JaegerKeyValue,
+  JaegerLog,
+  JaegerSpanReference,
+  JaegerSpan,
+  JaegerProcess,
+  JaegerTrace,
+} from "./tracing/types";

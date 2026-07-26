@@ -17,8 +17,8 @@ export interface FetchOptions {
   /** Request body (will be JSON stringified) */
   body?: unknown;
 
-  /** Raw body string (sent as-is, takes precedence over body) */
-  rawBody?: string;
+  /** Raw body (sent as-is, takes precedence over body) */
+  rawBody?: string | Uint8Array | ArrayBuffer;
 
   /** Additional headers for this request */
   headers?: Record<string, string>;
@@ -39,13 +39,12 @@ export class Fetcher {
   private readonly defaultTimeout: number;
 
   constructor(config: QuickwitConfig) {
-    // Normalize endpoint (remove trailing slash)
-    this.endpoint = config.endpoint.replace(/\/$/, "");
+    // Normalize endpoint while preserving any reverse-proxy path prefix.
+    this.endpoint = config.endpoint.replace(/\/+$/, "");
     this.defaultTimeout = config.timeout ?? 30000;
 
     // Build default headers
     this.defaultHeaders = {
-      "Content-Type": "application/json",
       Accept: "application/json",
       ...config.headers,
     };
@@ -63,7 +62,7 @@ export class Fetcher {
    * Build URL with query parameters
    */
   private buildUrl(path: string, params?: FetchOptions["params"]): string {
-    const url = new URL(path, this.endpoint);
+    const url = new URL(path.replace(/^\/+/, ""), `${this.endpoint}/`);
 
     if (params) {
       for (const [key, value] of Object.entries(params)) {
@@ -102,30 +101,33 @@ export class Fetcher {
   async fetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
     const { method = "GET", body, rawBody, headers = {}, timeout, params } = options;
     const requestTimeout = timeout ?? this.defaultTimeout;
-
-    const url = this.buildUrl(path, params);
-
-    // Create abort controller for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), requestTimeout);
-
-    // Determine body to send: rawBody takes precedence over JSON-stringified body
-    const requestBody = rawBody !== undefined
-      ? rawBody
-      : (body !== undefined ? JSON.stringify(body) : undefined);
+    let url = this.endpoint;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
+      url = this.buildUrl(path, params);
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+
+      const requestBody = rawBody instanceof Uint8Array
+        ? Uint8Array.from(rawBody).buffer
+        : rawBody !== undefined
+        ? rawBody
+        : (body !== undefined ? JSON.stringify(body) : undefined);
+      const requestHeaders: Record<string, string> = {
+        ...this.defaultHeaders,
+        ...headers,
+      };
+      if (body !== undefined && rawBody === undefined && requestHeaders["Content-Type"] === undefined) {
+        requestHeaders["Content-Type"] = "application/json";
+      }
+
       const response = await fetch(url, {
         method,
-        headers: {
-          ...this.defaultHeaders,
-          ...headers,
-        },
+        headers: requestHeaders,
         body: requestBody,
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       // Handle non-OK responses
       if (!response.ok) {
@@ -137,24 +139,17 @@ export class Fetcher {
         );
       }
 
-      // Handle empty responses
-      const contentLength = response.headers.get("content-length");
-      const contentType = response.headers.get("content-type");
-
-      if (contentLength === "0" || response.status === 204) {
+      const responseText = await response.text();
+      if (responseText.length === 0) {
         return undefined as T;
       }
 
-      // Parse JSON response
+      const contentType = response.headers.get("content-type");
       if (contentType?.includes("application/json")) {
-        return (await response.json()) as T;
+        return JSON.parse(responseText) as T;
       }
-
-      // Return text for non-JSON responses
-      return (await response.text()) as T;
+      return responseText as T;
     } catch (error) {
-      clearTimeout(timeoutId);
-
       // Handle abort (timeout)
       if (error instanceof Error && error.name === "AbortError") {
         throw new TimeoutError(
@@ -182,6 +177,10 @@ export class Fetcher {
         undefined,
         { cause: error instanceof Error ? error : undefined }
       );
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 
@@ -247,6 +246,19 @@ export class Fetcher {
         ...options?.headers,
         "Content-Type": "application/x-ndjson",
       },
+    });
+  }
+
+  /** Perform a POST request with an arbitrary raw body. */
+  async postRaw<T>(
+    path: string,
+    rawBody: string | Uint8Array | ArrayBuffer,
+    options?: Omit<FetchOptions, "method" | "body" | "rawBody">
+  ): Promise<T> {
+    return this.fetch<T>(path, {
+      ...options,
+      method: "POST",
+      rawBody,
     });
   }
 

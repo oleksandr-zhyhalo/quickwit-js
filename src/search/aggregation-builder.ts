@@ -9,7 +9,9 @@ import type {
   MaxAggregation,
   CountAggregation,
   StatsAggregation,
+  ExtendedStatsAggregation,
   PercentilesAggregation,
+  CardinalityAggregation,
   AggregationConfig,
 } from "./types";
 
@@ -19,6 +21,10 @@ import type {
 export interface TermsOptions {
   /** Maximum number of buckets to return (default: 10) */
   size?: number;
+  /** Number of terms collected from each split */
+  shardSize?: number;
+  /** Include per-bucket count errors */
+  showTermDocCountError?: boolean;
   /** Minimum document count for a bucket */
   minDocCount?: number;
   /** Order by field and direction */
@@ -33,10 +39,12 @@ export interface TermsOptions {
  * Options for histogram aggregation
  */
 export interface HistogramOptions {
-  /** Minimum bucket key */
-  minBound?: number;
-  /** Maximum bucket key */
-  maxBound?: number;
+  /** Return buckets keyed by their serialized key */
+  keyed?: boolean;
+  /** Extend the bucket range */
+  extendedBounds?: { min: number; max: number };
+  /** Limit the bucket range */
+  hardBounds?: { min: number; max: number };
   /** Minimum document count for a bucket */
   minDocCount?: number;
   /** Offset for bucket boundaries */
@@ -49,8 +57,8 @@ export interface HistogramOptions {
  * Options for date histogram aggregation
  */
 export interface DateHistogramOptions {
-  /** Timezone for bucketing (e.g., "UTC", "America/New_York") */
-  timeZone?: string;
+  /** Return buckets keyed by their serialized key */
+  keyed?: boolean;
   /** Minimum document count for a bucket */
   minDocCount?: number;
   /** Extended bounds for the histogram */
@@ -58,8 +66,11 @@ export interface DateHistogramOptions {
     min: number | string;
     max: number | string;
   };
-  /** Format for returned date keys */
-  format?: string;
+  /** Hard bounds for the histogram */
+  hardBounds?: {
+    min: number | string;
+    max: number | string;
+  };
   /** Offset for bucket boundaries */
   offset?: string;
   /** Nested aggregations */
@@ -102,6 +113,12 @@ export interface MetricOptions {
 export interface PercentilesOptions extends MetricOptions {
   /** Percentile values to compute */
   percents?: number[];
+  /** Return percentile values as an object */
+  keyed?: boolean;
+}
+
+export interface ExtendedStatsOptions extends MetricOptions {
+  sigma?: number;
 }
 
 /**
@@ -147,6 +164,12 @@ export class AggregationBuilder {
     if (options.size !== undefined) {
       result.terms.size = options.size;
     }
+    if (options.shardSize !== undefined) {
+      result.terms.shard_size = options.shardSize;
+    }
+    if (options.showTermDocCountError !== undefined) {
+      result.terms.show_term_doc_count_error = options.showTermDocCountError;
+    }
     if (options.minDocCount !== undefined) {
       result.terms.min_doc_count = options.minDocCount;
     }
@@ -182,11 +205,14 @@ export class AggregationBuilder {
       },
     };
 
-    if (options.minBound !== undefined) {
-      result.histogram.min_bound = options.minBound;
+    if (options.keyed !== undefined) {
+      result.histogram.keyed = options.keyed;
     }
-    if (options.maxBound !== undefined) {
-      result.histogram.max_bound = options.maxBound;
+    if (options.extendedBounds !== undefined) {
+      result.histogram.extended_bounds = options.extendedBounds;
+    }
+    if (options.hardBounds !== undefined) {
+      result.histogram.hard_bounds = options.hardBounds;
     }
     if (options.minDocCount !== undefined) {
       result.histogram.min_doc_count = options.minDocCount;
@@ -220,8 +246,8 @@ export class AggregationBuilder {
       },
     };
 
-    if (options.timeZone !== undefined) {
-      result.date_histogram.time_zone = options.timeZone;
+    if (options.keyed !== undefined) {
+      result.date_histogram.keyed = options.keyed;
     }
     if (options.minDocCount !== undefined) {
       result.date_histogram.min_doc_count = options.minDocCount;
@@ -229,49 +255,8 @@ export class AggregationBuilder {
     if (options.extendedBounds !== undefined) {
       result.date_histogram.extended_bounds = options.extendedBounds;
     }
-    if (options.format !== undefined) {
-      result.date_histogram.format = options.format;
-    }
-    if (options.offset !== undefined) {
-      result.date_histogram.offset = options.offset;
-    }
-    if (options.aggs !== undefined) {
-      result.aggs = options.aggs;
-    }
-
-    return result;
-  }
-
-  /**
-   * Create a date histogram aggregation with calendar interval
-   *
-   * @param field - Datetime field to aggregate on
-   * @param interval - Calendar interval ("minute", "hour", "day", "week", "month", "quarter", "year")
-   * @param options - Aggregation options
-   */
-  static calendarDateHistogram(
-    field: string,
-    interval: "minute" | "hour" | "day" | "week" | "month" | "quarter" | "year",
-    options: DateHistogramOptions = {}
-  ): DateHistogramAggregation {
-    const result: DateHistogramAggregation = {
-      date_histogram: {
-        field,
-        calendar_interval: interval,
-      },
-    };
-
-    if (options.timeZone !== undefined) {
-      result.date_histogram.time_zone = options.timeZone;
-    }
-    if (options.minDocCount !== undefined) {
-      result.date_histogram.min_doc_count = options.minDocCount;
-    }
-    if (options.extendedBounds !== undefined) {
-      result.date_histogram.extended_bounds = options.extendedBounds;
-    }
-    if (options.format !== undefined) {
-      result.date_histogram.format = options.format;
+    if (options.hardBounds !== undefined) {
+      result.date_histogram.hard_bounds = options.hardBounds;
     }
     if (options.offset !== undefined) {
       result.date_histogram.offset = options.offset;
@@ -381,10 +366,11 @@ export class AggregationBuilder {
    *
    * @param field - Field to count values on
    */
-  static count(field: string): CountAggregation {
+  static count(field: string, options: MetricOptions = {}): CountAggregation {
     return {
       value_count: {
         field,
+        missing: options.missing,
       },
     };
   }
@@ -404,6 +390,20 @@ export class AggregationBuilder {
     };
   }
 
+  /** Create an extended stats metric aggregation. */
+  static extendedStats(
+    field: string,
+    options: ExtendedStatsOptions = {}
+  ): ExtendedStatsAggregation {
+    return {
+      extended_stats: {
+        field,
+        missing: options.missing,
+        sigma: options.sigma,
+      },
+    };
+  }
+
   /**
    * Create a percentiles metric aggregation
    *
@@ -418,6 +418,20 @@ export class AggregationBuilder {
       percentiles: {
         field,
         percents: options.percents,
+        missing: options.missing,
+        keyed: options.keyed,
+      },
+    };
+  }
+
+  /** Create a cardinality aggregation. */
+  static cardinality(
+    field: string,
+    options: { missing?: string | number } = {}
+  ): CardinalityAggregation {
+    return {
+      cardinality: {
+        field,
         missing: options.missing,
       },
     };

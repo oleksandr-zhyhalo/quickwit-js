@@ -101,10 +101,10 @@ describe("QueryBuilder", () => {
     const builder = new QueryBuilder().sortBy("timestamp", "desc");
     const result = builder.build();
 
-    expect(result.params.sort_by).toEqual(["-timestamp"]);
+    expect(result.params.sort_by).toEqual(["timestamp"]);
   });
 
-  test("sets sort with shorthand (prefix -)", () => {
+  test("sets ascending sort with shorthand (prefix -)", () => {
     const builder = new QueryBuilder().sortBy("-timestamp");
     const result = builder.build();
 
@@ -115,7 +115,7 @@ describe("QueryBuilder", () => {
     const builder = new QueryBuilder().sortBy("timestamp", "asc");
     const result = builder.build();
 
-    expect(result.params.sort_by).toEqual(["timestamp"]);
+    expect(result.params.sort_by).toEqual(["-timestamp"]);
   });
 
   test("sets countAll", () => {
@@ -265,14 +265,14 @@ describe("AggregationBuilder", () => {
 
     test("creates histogram with options", () => {
       const agg = AggregationBuilder.histogram("size", 1000, {
-        minBound: 0,
-        maxBound: 10000,
+        extendedBounds: { min: 0, max: 10000 },
+        hardBounds: { min: 0, max: 10000 },
         minDocCount: 1,
         offset: 500,
       });
 
-      expect(agg.histogram.min_bound).toBe(0);
-      expect(agg.histogram.max_bound).toBe(10000);
+      expect(agg.histogram.extended_bounds).toEqual({ min: 0, max: 10000 });
+      expect(agg.histogram.hard_bounds).toEqual({ min: 0, max: 10000 });
       expect(agg.histogram.min_doc_count).toBe(1);
       expect(agg.histogram.offset).toBe(500);
     });
@@ -289,24 +289,12 @@ describe("AggregationBuilder", () => {
 
     test("creates date histogram with options", () => {
       const agg = AggregationBuilder.dateHistogram("timestamp", "1d", {
-        timeZone: "America/New_York",
         minDocCount: 0,
-        format: "yyyy-MM-dd",
+        extendedBounds: { min: 0, max: 10 },
       });
 
-      expect(agg.date_histogram.time_zone).toBe("America/New_York");
       expect(agg.date_histogram.min_doc_count).toBe(0);
-      expect(agg.date_histogram.format).toBe("yyyy-MM-dd");
-    });
-  });
-
-  describe("calendarDateHistogram", () => {
-    test("creates calendar date histogram", () => {
-      const agg = AggregationBuilder.calendarDateHistogram("timestamp", "month");
-
-      expect(agg).toEqual({
-        date_histogram: { field: "timestamp", calendar_interval: "month" },
-      });
+      expect(agg.date_histogram.extended_bounds).toEqual({ min: 0, max: 10 });
     });
   });
 
@@ -740,7 +728,7 @@ describe("toNDJSON", () => {
 // ============================================================================
 
 describe("isFastFieldEnabled", () => {
-  const mk = (fast: FieldMapping["fast"]): FieldMapping => ({
+  const mk = (fast: Extract<FieldMapping, { type: "text" }>["fast"]): FieldMapping => ({
     name: "f",
     type: "text",
     fast,

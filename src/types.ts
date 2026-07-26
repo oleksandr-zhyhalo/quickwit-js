@@ -18,21 +18,21 @@ export interface QuickwitConfig {
   headers?: Record<string, string>;
 }
 
+/** Overrides for one client request. */
+export interface RequestOptions {
+  /** Request timeout in milliseconds. */
+  timeout?: number;
+
+  /** Headers to merge with the client defaults. */
+  headers?: Record<string, string>;
+}
+
 /**
  * Response from the health check endpoint
  */
 export interface HealthResponse {
   /** Whether the cluster is healthy */
   healthy: boolean;
-
-  /** Cluster ID */
-  cluster_id?: string;
-
-  /** Current node ID */
-  node_id?: string;
-
-  /** Quickwit version */
-  version?: string;
 }
 
 /**
@@ -40,7 +40,7 @@ export interface HealthResponse {
  */
 export interface IndexMetadata {
   /** Version of the metadata format */
-  version: string;
+  version: "0.9";
 
   /** Unique index UID (format: "index_id:ulid") */
   index_uid: string;
@@ -63,7 +63,7 @@ export interface IndexMetadata {
  */
 export interface IndexConfig {
   /** Version of the index configuration */
-  version: string;
+  version: "0.9" | "0.8";
 
   /** Index ID */
   index_id: string;
@@ -77,11 +77,14 @@ export interface IndexConfig {
   /** Indexing settings */
   indexing_settings?: IndexingSettings;
 
+  /** Ingest API settings */
+  ingest_settings?: IngestSettings;
+
   /** Search settings */
   search_settings?: SearchSettings;
 
   /** Retention policy */
-  retention?: RetentionPolicy;
+  retention?: RetentionPolicy | null;
 }
 
 /**
@@ -92,7 +95,7 @@ export interface DocMapping {
   doc_mapping_uid?: string;
 
   /** Field mappings */
-  field_mappings: FieldMapping[];
+  field_mappings?: FieldMapping[];
 
   /** Tag fields for filtering */
   tag_fields?: string[];
@@ -153,29 +156,12 @@ export type FastFieldNormalizer = "raw" | "lowercase";
  */
 export type FastFieldConfig = boolean | { normalizer: FastFieldNormalizer };
 
-/**
- * Field mapping configuration
- */
-export interface FieldMapping {
+interface BaseFieldMapping {
   /** Field name */
   name: string;
 
   /** Optional human-readable description of the field (Quickwit 0.8+). */
   description?: string;
-
-  /** Field type */
-  type:
-    | "text"
-    | "i64"
-    | "u64"
-    | "f64"
-    | "bool"
-    | "datetime"
-    | "bytes"
-    | "json"
-    | "ip"
-    | "object"
-    | "array";
 
   /** Whether the field is stored */
   stored?: boolean;
@@ -183,40 +169,88 @@ export interface FieldMapping {
   /** Whether the field is indexed */
   indexed?: boolean;
 
-  /** Tokenizer for text fields */
-  tokenizer?: string;
-
-  /** Whether to record term positions */
-  record?: "basic" | "freq" | "position";
-
   /** Whether the field is required */
   required?: boolean;
-
-  /**
-   * Fast columnar storage configuration.
-   * See {@link FastFieldConfig} — can be `true`, `false`, or `{ normalizer }`.
-   * Use {@link isFastFieldEnabled} to check whether fast is on.
-   */
-  fast?: FastFieldConfig;
-
-  /** Nested field mappings for object types */
-  field_mappings?: FieldMapping[];
-
-  /** Datetime input formats */
-  input_formats?: string[];
-
-  /** Datetime output format */
-  output_format?: string;
-
-  /** Fast datetime precision */
-  fast_precision?: "seconds" | "milliseconds" | "microseconds" | "nanoseconds";
-
-  /** Whether to store field norms for relevance scoring (text fields only, default: false) */
-  fieldnorms?: boolean;
-
-  /** Input format for bytes fields */
-  input_format?: "hex" | "base64";
 }
+
+export interface TextFieldMapping extends BaseFieldMapping {
+  type: "text";
+  tokenizer?: string;
+  record?: "basic" | "freq" | "position";
+  fieldnorms?: boolean;
+  fast?: FastFieldConfig;
+}
+
+export interface NumericFieldMapping extends BaseFieldMapping {
+  type: "i64" | "u64" | "f64";
+  fast?: boolean;
+  coerce?: boolean;
+  output_format?: "number" | "string";
+}
+
+export interface BoolOrIpFieldMapping extends BaseFieldMapping {
+  type: "bool" | "ip";
+  fast?: boolean;
+}
+
+export interface DatetimeFieldMapping extends BaseFieldMapping {
+  type: "datetime";
+  fast?: boolean;
+  input_formats?: string[];
+  output_format?: string;
+  fast_precision?: "seconds" | "milliseconds" | "microseconds" | "nanoseconds";
+}
+
+export interface BytesFieldMapping extends BaseFieldMapping {
+  type: "bytes";
+  fast?: boolean;
+  input_format?: "hex" | "base64";
+  output_format?: "hex" | "base64";
+}
+
+export interface JsonFieldMapping extends BaseFieldMapping {
+  type: "json";
+  tokenizer?: string;
+  record?: "basic" | "freq" | "position";
+  expand_dots?: boolean;
+  fast?: FastFieldConfig;
+}
+
+export interface ObjectFieldMapping extends BaseFieldMapping {
+  type: "object";
+  field_mappings: FieldMapping[];
+}
+
+export interface ConcatenateFieldMapping extends BaseFieldMapping {
+  type: "concatenate";
+  concatenate_fields: string[];
+  include_dynamic_fields?: boolean;
+  tokenizer?: string;
+  record?: "basic" | "freq" | "position";
+}
+
+export type ArrayFieldMapping =
+  | (Omit<TextFieldMapping, "type"> & { type: "array<text>" })
+  | (Omit<NumericFieldMapping, "type"> & {
+      type: "array<i64>" | "array<u64>" | "array<f64>";
+    })
+  | (Omit<BoolOrIpFieldMapping, "type"> & {
+      type: "array<bool>" | "array<ip>";
+    })
+  | (Omit<DatetimeFieldMapping, "type"> & { type: "array<datetime>" })
+  | (Omit<BytesFieldMapping, "type" | "fast"> & { type: "array<bytes>" })
+  | (Omit<JsonFieldMapping, "type"> & { type: "array<json>" });
+
+export type FieldMapping =
+  | TextFieldMapping
+  | NumericFieldMapping
+  | BoolOrIpFieldMapping
+  | DatetimeFieldMapping
+  | BytesFieldMapping
+  | JsonFieldMapping
+  | ObjectFieldMapping
+  | ConcatenateFieldMapping
+  | ArrayFieldMapping;
 
 /**
  * Indexing settings
@@ -239,6 +273,12 @@ export interface IndexingSettings {
 
   /** Resources configuration */
   resources?: ResourcesConfig;
+}
+
+/** Ingest API settings for an index. */
+export interface IngestSettings {
+  min_shards?: number;
+  validate_docs?: boolean;
 }
 
 /**
@@ -297,51 +337,121 @@ export interface RetentionPolicy {
   schedule?: string;
 }
 
-/**
- * Source configuration
- */
-export interface SourceConfig {
-  /** Version of the source configuration format */
-  version?: string;
+export type SourceInputFormat =
+  | "json"
+  | "plain_text"
+  | "plain"
+  | "otlp_logs_json"
+  | "otlp_logs_proto"
+  | "otlp_logs_protobuf"
+  | "otlp_trace_json"
+  | "otlp_traces_json"
+  | "otlp_trace_proto"
+  | "otlp_trace_protobuf"
+  | "otlp_traces_proto"
+  | "otlp_traces_protobuf";
 
-  /** Source ID */
+interface SourceConfigBase {
   source_id: string;
-
-  /** Source type */
-  source_type:
-    | "file"
-    | "kafka"
-    | "kinesis"
-    | "pulsar"
-    | "pubsub"
-    | "ingest"
-    | "ingest-api"
-    | "ingest-cli"
-    | "stdin"
-    | "vec"
-    | "void";
-
-  /** Whether the source is enabled */
   enabled?: boolean;
-
-  /** Number of pipelines */
-  num_pipelines?: number;
-
-  /** Source-specific parameters */
-  params?: Record<string, unknown>;
-
-  /** Transform configuration */
-  transform?: TransformConfig;
-
-  /** Input format */
-  input_format?:
-    | "json"
-    | "plain_text"
-    | "otlp_logs_json"
-    | "otlp_logs_protobuf"
-    | "otlp_traces_json"
-    | "otlp_traces_protobuf";
+  transform?: TransformConfig | null;
+  input_format?: SourceInputFormat;
 }
+
+interface CurrentSourceVersion {
+  version: "0.9" | "0.8";
+  num_pipelines?: number;
+}
+
+interface LegacySourceVersion {
+  version: "0.7";
+  desired_num_pipelines?: number;
+  max_num_pipelines_per_indexer?: number;
+}
+
+export interface FileSourceNotification {
+  type: "sqs";
+  queue_url: string;
+  message_type: "s3_notification" | "raw_uri";
+  deduplication_window_duration_secs?: number;
+  deduplication_window_max_messages?: number;
+  deduplication_cleanup_interval_secs?: number;
+}
+
+export type FileSourceParams =
+  | { filepath: string; notifications?: never }
+  | { filepath?: never; notifications: [FileSourceNotification] };
+
+export interface KafkaSourceParams {
+  topic: string;
+  client_log_level?: "debug" | "info" | "warn" | "error";
+  client_params?: Record<string, unknown>;
+  enable_backfill_mode?: boolean;
+}
+
+interface KinesisSourceParamsBase {
+  stream_name: string;
+  enable_backfill_mode?: boolean;
+}
+
+export type KinesisSourceParams = KinesisSourceParamsBase &
+  (
+    | { region: string; endpoint?: never }
+    | { region?: never; endpoint: string }
+    | { region?: never; endpoint?: never }
+  );
+
+export interface PubSubSourceParams {
+  subscription: string;
+  enable_backfill_mode?: boolean;
+  credentials_file?: string;
+  project_id?: string;
+  max_messages_per_pull?: number;
+}
+
+export interface PulsarSourceParams {
+  topics: string[];
+  address: string;
+  consumer_name?: string;
+  authentication?: PulsarSourceAuth;
+}
+
+export type PulsarSourceAuth =
+  | { token: string }
+  | {
+      oauth2: {
+        issuer_url: string;
+        credentials_url: string;
+        audience?: string;
+        scope?: string;
+      };
+    };
+
+type SourceParams =
+  | { source_type: "file"; params: FileSourceParams }
+  | { source_type: "kafka"; params: KafkaSourceParams }
+  | { source_type: "kinesis"; params: KinesisSourceParams }
+  | { source_type: "pubsub"; params: PubSubSourceParams }
+  | { source_type: "pulsar"; params: PulsarSourceParams }
+  | { source_type: "vec"; params: { docs: string[]; batch_num_docs: number; partition?: string } }
+  | { source_type: "void"; params: Record<string, never> }
+  | { source_type: "ingest" | "ingest-api" | "ingest-cli" | "stdin"; params?: never };
+
+export type SourceConfig = SourceConfigBase &
+  (CurrentSourceVersion | LegacySourceVersion) &
+  SourceParams;
+
+type WritableSourceParams =
+  | { source_type: "file"; params: FileSourceParams }
+  | { source_type: "kafka"; params: KafkaSourceParams }
+  | { source_type: "kinesis"; params: KinesisSourceParams }
+  | { source_type: "pubsub"; params: PubSubSourceParams }
+  | { source_type: "pulsar"; params: PulsarSourceParams };
+
+/** Source configuration accepted by the REST create and update endpoints. */
+export type SourceConfigRequest = SourceConfigBase &
+  (CurrentSourceVersion | LegacySourceVersion) &
+  WritableSourceParams;
 
 /**
  * Transform configuration for sources
@@ -393,6 +503,9 @@ export interface IngestOptions {
    * - "force": Trigger immediate commit after processing (slower but guaranteed searchable)
    */
   commit?: CommitMode;
+
+  /** Include individual parse failures in the response (ingest v2 only). */
+  detailed_response?: boolean;
 }
 
 /**
@@ -401,6 +514,21 @@ export interface IngestOptions {
 export interface IngestResponse {
   /** Number of documents queued for processing */
   num_docs_for_processing: number;
+
+  /** Number of documents accepted by ingest v2. */
+  num_ingested_docs?: number;
+
+  /** Number of documents rejected during parsing by ingest v2. */
+  num_rejected_docs?: number;
+
+  /** Individual failures, present when detailed_response is true. */
+  parse_failures?: IngestParseFailure[];
+}
+
+export interface IngestParseFailure {
+  message: string;
+  document: string;
+  reason: "invalid_json" | "invalid_schema" | "unspecified";
 }
 
 // ============================================================================
@@ -412,7 +540,7 @@ export interface IngestResponse {
  */
 export interface CreateIndexRequest {
   /** Version of the index configuration format */
-  version: string;
+  version: "0.9" | "0.8";
 
   /** Unique index ID */
   index_id: string;
@@ -425,6 +553,9 @@ export interface CreateIndexRequest {
 
   /** Indexing settings */
   indexing_settings?: IndexingSettings;
+
+  /** Ingest API settings */
+  ingest_settings?: IngestSettings;
 
   /** Search settings */
   search_settings?: SearchSettings;
@@ -517,7 +648,79 @@ export interface UpdateSourceOptions {
  * File entry returned by delete operations
  */
 export interface FileEntry {
-  [key: string]: unknown;
+  split_id: string;
+  num_docs: number;
+  uncompressed_docs_size_bytes: number;
+  file_name: string;
+  file_size_bytes: number;
+}
+
+export interface QuickwitVersion {
+  build: {
+    build_date: string;
+    build_profile: string;
+    build_target: string;
+    cargo_pkg_version: string;
+    commit_date: string;
+    commit_hash: string;
+    commit_short_hash: string;
+    commit_tags: string[];
+    version: string;
+  };
+  runtime: {
+    num_cpus: number;
+    num_threads_blocking: number;
+    num_threads_non_blocking: number;
+  };
+}
+
+export interface ClusterNodeId {
+  node_id: string;
+  generation_id: number;
+  gossip_advertise_addr: string;
+}
+
+export interface ClusterSnapshot {
+  cluster_id: string;
+  self_node_id: ClusterNodeId;
+  ready_nodes: ClusterNodeId[];
+  live_nodes: ClusterNodeId[];
+  dead_nodes: ClusterNodeId[];
+  chitchat_state_snapshot: Record<string, unknown>;
+}
+
+export interface DeleteQueryRequest {
+  query: string;
+  search_fields?: string[];
+  start_timestamp?: number;
+  end_timestamp?: number;
+}
+
+export interface DeleteQuery {
+  index_uid: string;
+  query_ast: string;
+  start_timestamp?: number | null;
+  end_timestamp?: number | null;
+}
+
+export interface DeleteTask {
+  create_timestamp: number;
+  opstamp: number;
+  delete_query?: DeleteQuery | null;
+}
+
+export interface IndexTemplate {
+  version: "0.9";
+  template_id: string;
+  index_id_patterns: string[];
+  description?: string | null;
+  index_root_uri?: string | null;
+  priority?: number;
+  doc_mapping: DocMapping;
+  indexing_settings?: IndexingSettings;
+  ingest_settings?: IngestSettings;
+  search_settings?: SearchSettings;
+  retention?: RetentionPolicy | null;
 }
 
 // ============================================================================
@@ -534,5 +737,5 @@ export interface FileEntry {
  * used by text/json fields with an explicit normalizer.
  */
 export function isFastFieldEnabled(f: FieldMapping): boolean {
-  return f.fast !== undefined && f.fast !== false;
+  return "fast" in f && f.fast !== undefined && f.fast !== false;
 }
